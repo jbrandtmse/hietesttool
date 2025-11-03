@@ -15,8 +15,9 @@
 | **Project Config** | pyproject.toml | PEP 518 | Project metadata and dependencies | Modern Python standard, consolidates configuration |
 | **CLI Framework** | click | 8.1+ | Command-line interface | Superior to argparse for complex CLIs, excellent documentation, decorator-based API |
 | **CSV Processing** | pandas | 2.1+ | CSV import and data validation | Robust data manipulation, excellent error handling, widely used |
-| **XML Processing** | lxml | 5.1+ | XML parsing and template processing | High performance, standards-compliant, supports XPath and XSLT |
-| **SOAP Client** | zeep | 4.2+ | SOAP/WSDL client with WS-Security | Most mature Python SOAP library, supports WS-Addressing and WS-Security |
+| **XML Processing** | lxml | 5.1+ | XML parsing, template processing, and message construction | High performance, standards-compliant, supports XPath and XSLT. Used for HL7v3 and XDSb metadata construction |
+| **SOAP Client** | zeep | 4.2+ | SOAP/WSDL client with WS-Security (limited use) | Used for standard SOAP operations. **Note:** Has experimental MTOM support - not used for ITI-41 |
+| **MTOM/MIME** | email.mime | Built-in | Manual MTOM multipart message construction | Standard library for multipart MIME. Used for ITI-41 MTOM packaging due to zeep's experimental MTOM support |
 | **SAML Library** | pysaml2 | 7.4+ | SAML 2.0 assertion generation | Mature enterprise-grade library, comprehensive SAML support |
 | **XML Signing** | python-xmlsec | 1.3+ | XML signature and canonicalization | Python bindings to xmlsec C library, industry standard |
 | **HTTP Client** | requests | 2.31+ | HTTP/HTTPS transport | De facto standard, excellent TLS support, simple API |
@@ -56,4 +57,3 @@ These are required by primary dependencies but listed for transparency:
 | **virtualenv / venv** | Virtual environment isolation |
 | **pip-tools** | Dependency version locking (optional) |
 | **pre-commit** | Git pre-commit hooks (optional) |
-
