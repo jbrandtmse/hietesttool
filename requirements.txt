@@ -1,26 +1,36 @@
-# IHE Test Utility - SOAP/MTOM Integration Spike Dependencies
+# Production dependencies for IHE Test Utility
+# Synced with pyproject.toml [project.dependencies]
 
-# Core SOAP/XML Processing
-zeep==4.2.1
-lxml==5.1.0
-requests==2.31.0
+# Core data processing
+pandas>=2.1
 
-# Mock Server
-Flask==3.0.0
-Werkzeug==3.0.1
+# XML processing
+lxml>=5.1
 
-# Testing
-pytest==7.4.3
-pytest-mock==3.12.0
+# SOAP client
+zeep>=4.2
 
-# Type hints and validation
-python-dateutil==2.8.2
+# CLI framework
+click>=8.1
 
-# XML Signing (Story 1.2 spike dependencies)
-cryptography==41.0.7
-xmlsec==1.3.13
+# Mock server
+flask>=3.0
+werkzeug>=3.0
 
-# Development dependencies
-black==23.12.1
-ruff==0.1.9
-mypy==1.7.1
+# HTTP client
+requests>=2.31
+
+# XML signing
+signxml>=3.2
+
+# Date/time utilities
+python-dateutil>=2.8
+
+# Data validation
+pydantic>=2.5
+
+# Cryptography
+cryptography>=41.0
+
+# Environment management
+python-dotenv>=1.0

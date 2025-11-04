@@ -1,0 +1,262 @@
+# IHE Test Utility
+
+A Python-based test utility for IHE (Integrating the Healthcare Enterprise) integration testing, supporting PIX Add (ITI-44) and ITI-41 (Provide and Register Document Set-b) transactions.
+
+## Overview
+
+This utility enables healthcare system integrators to:
+- Parse patient demographics from CSV files
+- Generate HL7v3 PIX Add messages
+- Create personalized CCD (Continuity of Care Document) documents
+- Generate and sign SAML 2.0 assertions for secure document submission
+- Submit documents via ITI-41 transactions with MTOM attachments
+- Test against mock IHE endpoints
+
+## Key Features
+
+- **CSV-driven patient data** - Bulk patient demographics processing
+- **PIX Add transaction support** - Patient Identity Source actor implementation
+- **ITI-41 document submission** - XDS Document Source actor with MTOM
+- **SAML 2.0 assertion signing** - XML digital signatures with X.509 certificates
+- **Mock IHE endpoints** - Built-in Flask server for local testing
+- **HL7v3 message construction** - Compliant PRPA_IN201301UV02 messages
+- **Template-based CCD generation** - Personalized clinical documents
+- **Cross-platform compatibility** - Windows, macOS, and Linux support
+
+## Prerequisites
+
+- **Python 3.10 or higher**
+- **Git** (for cloning the repository)
+- **Virtual environment** (recommended)
+
+## Installation
+
+### 1. Clone the Repository
+
+```bash
+git clone <repository-url>
+cd ihe-test-utility
+```
+
+### 2. Create Virtual Environment
+
+#### Windows
+
+```bash
+python -m venv .venv
+.venv\Scripts\activate
+```
+
+#### macOS/Linux
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+```
+
+### 3. Install the Package
+
+#### Development Mode (Recommended)
+
+```bash
+pip install -e .
+```
+
+#### Development Mode with Dev Dependencies
+
+```bash
+pip install -e .[dev]
+```
+
+#### Production Mode
+
+```bash
+pip install .
+```
+
+### 4. Verify Installation
+
+```bash
+ihe-test-util --version
+python -c "from ihe_test_util import __version__; print(__version__)"
+```
+
+## Quick Start
+
+### Running Mock IHE Endpoints
+
+```bash
+# Start mock server on default port 5000
+python -m ihe_test_util.mock_server.app
+
+# Or use custom port
+python -m ihe_test_util.mock_server.app --port 8080
+```
+
+### PIX Add Transaction Example
+
+```bash
+# Using CLI (future implementation)
+ihe-test-util pix-add --csv patients.csv --endpoint http://localhost:5000/PIXManager
+
+# Using Python API
+python examples/hl7v3_message_example.py
+```
+
+### ITI-41 Document Submission Example
+
+```bash
+# Using CLI (future implementation)
+ihe-test-util submit-document --csv patients.csv --template ccd_template.xml
+
+# Using Python API
+python examples/signxml_saml_example.py
+```
+
+## Project Structure
+
+```
+ihe-test-utility/
+├── src/ihe_test_util/          # Main package
+│   ├── cli/                    # CLI commands
+│   ├── csv_parser/             # CSV parsing and validation
+│   ├── template_engine/        # CCD template processing
+│   ├── ihe_transactions/       # IHE transaction implementations
+│   ├── saml/                   # SAML generation and signing
+│   ├── transport/              # HTTP/HTTPS client
+│   ├── mock_server/            # Flask mock endpoints
+│   ├── config/                 # Configuration management
+│   ├── logging_audit/          # Logging and audit trail
+│   ├── models/                 # Data models
+│   └── utils/                  # Utility functions
+├── tests/                      # Test suites
+│   ├── unit/                   # Unit tests
+│   ├── integration/            # Integration tests
+│   └── e2e/                    # End-to-end tests
+├── mocks/                      # Mock data and responses
+├── templates/                  # CCD and SAML templates
+├── examples/                   # Sample scripts
+├── config/                     # Configuration files
+├── docs/                       # Documentation
+└── pyproject.toml             # Project metadata
+```
+
+## Configuration
+
+Configuration is managed through:
+
+1. **Environment variables** - `.env` file (create from `.env.example`)
+2. **Configuration files** - JSON files in `config/` directory
+3. **Command-line arguments** - Override via CLI flags
+
+### Environment Variables
+
+```bash
+# Copy example configuration
+cp .env.example .env
+
+# Edit configuration
+# - IHE_PIX_ENDPOINT: PIX Manager endpoint URL
+# - IHE_XDS_ENDPOINT: XDS Repository endpoint URL
+# - SAML_ISSUER: SAML assertion issuer URI
+# - CERTIFICATE_PATH: Path to signing certificate
+# - PRIVATE_KEY_PATH: Path to private key
+```
+
+## Development
+
+### Running Tests
+
+```bash
+# Run all tests
+pytest
+
+# Run with coverage report
+pytest --cov=src/ihe_test_util --cov-report=html
+
+# Run specific test suite
+pytest tests/unit/
+pytest tests/integration/
+pytest tests/e2e/
+```
+
+### Code Quality
+
+```bash
+# Format code with black
+black src/ tests/
+
+# Lint with ruff
+ruff check src/ tests/
+
+# Type checking with mypy
+mypy src/
+```
+
+### Development Dependencies
+
+Install development dependencies for testing, linting, and formatting:
+
+```bash
+pip install -e .[dev]
+```
+
+This includes:
+- pytest (testing framework)
+- pytest-cov (coverage reporting)
+- pytest-mock (mocking utilities)
+- black (code formatter)
+- ruff (linter)
+- mypy (type checker)
+
+## Documentation
+
+- **Architecture** - See [docs/architecture/](docs/architecture/)
+- **PRD (Product Requirements)** - See [docs/prd/](docs/prd/)
+- **User Stories** - See [docs/stories/](docs/stories/)
+- **Spike Findings** - See [docs/spike-findings-*.md](docs/)
+- **ADRs (Architecture Decision Records)** - See [docs/architecture/adr-*.md](docs/architecture/)
+
+## Dependencies
+
+### Core Dependencies
+
+- **pandas** - CSV processing and data validation
+- **lxml** - XML processing for HL7v3 and templates
+- **zeep** - SOAP client with WS-Security
+- **click** - CLI framework
+- **flask** - Mock IHE endpoints
+- **requests** - HTTP/HTTPS transport
+- **signxml** - XML signing and canonicalization
+- **cryptography** - Certificate handling
+- **pydantic** - Data validation and settings
+- **python-dotenv** - Environment variable management
+
+See [pyproject.toml](pyproject.toml) for complete dependency list.
+
+## License
+
+[Specify license here]
+
+## Contributing
+
+[Contribution guidelines to be added]
+
+## Support
+
+For issues, questions, or contributions, please [contact information or issue tracker link].
+
+## Acknowledgments
+
+This project implements IHE integration profiles:
+
+**Phase 1 (MVP):**
+- **ITI-44** - Patient Identity Feed HL7v3 (PIX Add v3)
+- **ITI-41** - Provide and Register Document Set-b
+
+**Phase 2 (Post-MVP):**
+- **ITI-45** - PIX Query v3
+- **ITI-18** - Registry Stored Query
+- **ITI-43** - Retrieve Document Set
+
+For IHE specifications, see: https://profiles.ihe.net/

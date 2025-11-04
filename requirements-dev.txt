@@ -1,0 +1,19 @@
+# Development dependencies for IHE Test Utility
+# Synced with pyproject.toml [project.optional-dependencies.dev]
+
+# Include production dependencies
+-r requirements.txt
+
+# Testing framework
+pytest>=7.4
+pytest-cov>=4.1
+pytest-mock>=3.12
+
+# Code formatting
+black>=23.12
+
+# Linting
+ruff>=0.1
+
+# Type checking
+mypy>=1.7
