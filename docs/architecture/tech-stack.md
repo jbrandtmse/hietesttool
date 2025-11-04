@@ -18,8 +18,8 @@
 | **XML Processing** | lxml | 5.1+ | XML parsing, template processing, and message construction | High performance, standards-compliant, supports XPath and XSLT. Used for HL7v3 and XDSb metadata construction |
 | **SOAP Client** | zeep | 4.2+ | SOAP/WSDL client with WS-Security (limited use) | Used for standard SOAP operations. **Note:** Has experimental MTOM support - not used for ITI-41 |
 | **MTOM/MIME** | email.mime | Built-in | Manual MTOM multipart message construction | Standard library for multipart MIME. Used for ITI-41 MTOM packaging due to zeep's experimental MTOM support |
-| **SAML Library** | pysaml2 | 7.4+ | SAML 2.0 assertion generation | Mature enterprise-grade library, comprehensive SAML support |
-| **XML Signing** | python-xmlsec | 1.3+ | XML signature and canonicalization | Python bindings to xmlsec C library, industry standard |
+| **XML Signing** | signxml | 3.2+ | XML signature and canonicalization | Pure Python W3C XML Signature implementation, zero compilation, excellent Windows compatibility. Supports RSA-SHA256, SAML 2.0, XAdES, WS-Security |
+| **SAML Generation** | lxml + signxml | 5.1+ / 3.2+ | SAML 2.0 assertion generation and signing | Custom lightweight generator using lxml for assertions, signxml for signing. Simpler than pysaml2, meets project needs |
 | **HTTP Client** | requests | 2.31+ | HTTP/HTTPS transport | De facto standard, excellent TLS support, simple API |
 | **Mock Server** | Flask | 3.0+ | Mock IHE endpoints for testing | Lightweight, well-documented, easy to configure |
 | **WSGI Server** | Werkzeug | 3.0+ | Development server for Flask mocks | Built-in with Flask, sufficient for local testing |

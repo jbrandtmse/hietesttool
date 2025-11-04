@@ -100,32 +100,46 @@ Load XML templates (CCD and SAML), perform string replacement with patient-speci
 ### SAML Module
 
 **Responsibility:**
-Generate SAML 2.0 assertions using template-based or programmatic approaches, sign assertions with X.509 certificates using XML signatures, and verify assertion validity.
+Generate SAML 2.0 assertions using lightweight custom generator, sign assertions with X.509 certificates using XML signatures via SignXML, and verify assertion validity.
 
 **Key Interfaces:**
-- `generate_from_template(template_path: str, params: dict) -> SAMLAssertion` - Template-based generation
-- `generate_programmatic(subject: str, issuer: str, audience: str) -> SAMLAssertion` - Programmatic generation
-- `sign_assertion(assertion_xml: str, cert_path: str, key_path: str) -> str` - Sign SAML with certificate
-- `verify_assertion(signed_xml: str) -> bool` - Verify signature and timestamps
-- `load_certificate(cert_path: str, format: str) -> Certificate` - Load X.509 certificate (PEM, PKCS12, DER)
+- `generate_saml_assertion(issuer: str, subject: str, validity_minutes: int = 5) -> lxml.Element` - Generate SAML 2.0 assertion
+- `sign_assertion(assertion: lxml.Element, cert_pem: bytes, key_pem: bytes) -> lxml.Element` - Sign SAML with SignXML
+- `verify_assertion(signed_xml: lxml.Element, cert_pem: bytes) -> bool` - Verify signature and timestamps
+- `CertificateManager.load_pem_certificate(cert_path: Path) -> x509.Certificate` - Load PEM certificate
+- `CertificateManager.load_pem_private_key(key_path: Path) -> PrivateKey` - Load PEM private key
+- `CertificateManager.load_pkcs12(pkcs12_path: Path, password: bytes) -> tuple` - Load PKCS12 bundle
+- `CertificateManager.load_der_certificate(cert_path: Path) -> x509.Certificate` - Load DER certificate
 
 **Dependencies:**
-- Template Engine (for template-based SAML)
 - Config Manager (for certificate paths and SAML defaults)
 - Logger (for signing operations and errors)
 
 **Technology Stack:**
-- `pysaml2` 7.4+ for SAML 2.0 generation
-- `python-xmlsec` 1.3+ for XML signature/verification
-- `cryptography` 41.0+ for certificate handling
+- `lxml` 5.1+ for SAML 2.0 assertion XML construction
+- `signxml` 3.2+ for XML signature/verification (pure Python, W3C XML Signature standard)
+- `cryptography` 41.0+ for certificate handling and loading
 
 **Implementation Notes:**
-- Assertion validity: 5 minutes by default (configurable)
-- Signing algorithm: RSA-SHA256 (configurable)
-- Certificate formats: PEM (priority), PKCS12, DER
-- XML canonicalization: C14N to prevent tampering
-- Timestamp validation on verification
-- KeyInfo includes certificate reference in signature
+- **Lightweight Generator**: Custom SAML assertion builder using lxml (~100 lines), generates minimal assertions for IHE transactions
+- **SAML Structure**: Includes Issuer, Subject (NameID), Conditions (validity window), AuthnStatement
+- **SAML Namespace**: `urn:oasis:names:tc:SAML:2.0:assertion`
+- **Assertion ID**: UUID4 with `_` prefix (per SAML spec)
+- **Assertion validity**: 5 minutes by default (configurable via NotBefore/NotOnOrAfter)
+- **Signing algorithm**: RSA-SHA256 via `SignatureMethod.RSA_SHA256`
+- **Digest algorithm**: SHA256 via `DigestAlgorithm.SHA256`
+- **Canonicalization**: C14N 1.1 (automatic via SignXML)
+- **Certificate formats**: PEM (primary), PKCS12 (with password), DER
+- **Certificate management**: Dedicated `CertificateManager` class handles all formats
+- **Timestamp validation**: Validates NotBefore/NotOnOrAfter on verification
+- **KeyInfo embedding**: SignXML automatically includes X.509 certificate in signature
+- **Zero compilation**: SignXML is pure Python with pre-built wheels for all platforms
+- **Windows compatibility**: No Visual C++ Build Tools required (major improvement over python-xmlsec)
+- **Standards compliance**: Implements W3C XML Signature Version 1.1, tested against XMLDSig interoperability suite
+
+**Architecture Decision:**
+- See [ADR-002: SignXML for SAML Assertion Signing](adr-002-signxml-for-saml-signing.md) for full rationale on SignXML selection over python-xmlsec
+- Validated in Story 1.2 XML Signing Validation Spike with successful demonstration of all requirements
 
 ### IHE Transactions Module
 
@@ -333,4 +347,3 @@ graph TB
     style ITI41 fill:#e1ffe1
     style FileSystem fill:#f0f0f0
 ```
-
