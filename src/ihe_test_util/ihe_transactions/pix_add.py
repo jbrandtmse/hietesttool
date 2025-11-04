@@ -2,7 +2,7 @@
 
 import logging
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from lxml import etree
 
@@ -93,7 +93,7 @@ def build_pix_add_message(
     
     # Generate message control ID
     message_id = str(uuid.uuid4())
-    creation_time = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+    creation_time = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
     
     # Build root element
     root = etree.Element(

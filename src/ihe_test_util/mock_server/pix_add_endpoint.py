@@ -1,7 +1,7 @@
 """Mock PIX Add (ITI-44) endpoint for testing."""
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from flask import request, Response
 from lxml import etree
@@ -44,7 +44,7 @@ def create_pix_add_acknowledgement(
     id_elem.set("extension", f"ACK-{message_id}")
     
     # Add Creation Time
-    creation_time = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+    creation_time = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
     creation_time_elem = etree.SubElement(root, f"{{{HL7_NS}}}creationTime")
     creation_time_elem.set("value", creation_time)
     
@@ -120,7 +120,7 @@ def handle_pix_add_request():
             message_id = "unknown"
         
         # Log the request
-        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         log_dir = Path("mocks/logs")
         log_dir.mkdir(parents=True, exist_ok=True)
         
