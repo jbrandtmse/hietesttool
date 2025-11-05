@@ -316,6 +316,354 @@ INFO: Successfully parsed 3 patient record(s)
 **Cause:** No seed parameter provided to parser.  
 **Solution:** Use `parse_csv(file_path, seed=42)` for deterministic generation.
 
+## Comprehensive Validation
+
+### Overview
+
+The CSV parser performs comprehensive validation to ensure data quality before processing IHE transactions. Validation includes:
+
+- **Field-level validation**: Phone, email, SSN, ZIP code formats
+- **Date validation**: Future dates of birth, unreasonable ages
+- **Batch-level validation**: Duplicate patient IDs, duplicate names
+- **Error collection**: All issues collected before reporting (not fail-fast)
+
+### Validation Severity Levels
+
+**ERRORS** (Red) - Block processing:
+- Duplicate patient IDs across rows
+- Missing required fields or values
+- Invalid required field formats
+
+**WARNINGS** (Yellow) - Allow processing:
+- Invalid optional field formats (phone, email, SSN, ZIP)
+- Future dates of birth
+- Unreasonable ages (< 0 or > 120 years)
+- Duplicate names (may be legitimate)
+
+### Running Validation
+
+```bash
+# Validate CSV file (shows report in terminal)
+ihe-test-util csv validate patients.csv
+
+# Export invalid rows to separate CSV
+ihe-test-util csv validate patients.csv --export-errors errors.csv
+
+# Get machine-readable JSON output
+ihe-test-util csv validate patients.csv --json
+```
+
+### Exit Codes
+
+- **Exit code 0**: Validation passed (warnings are OK for CI/CD)
+- **Exit code 1**: Validation errors exist (blocks CI/CD)
+
+### Validation Report Format
+
+```
+CSV Validation Report
+Total Rows: 100
+Valid Rows: 95
+Rows with Errors: 3
+Rows with Warnings: 7
+
+ERRORS (3):
+  Row 5, Column 'patient_id': Duplicate patient_id found: TEST-001
+    → Suggestion: Ensure all patient IDs are unique or leave empty for auto-generation
+  
+  Row 12, Column 'patient_id': Duplicate patient_id found: TEST-001
+    → Suggestion: Ensure all patient IDs are unique or leave empty for auto-generation
+
+WARNINGS (7):
+  Row 3, Column 'phone': Phone format may be invalid: 555-1234
+    → Suggestion: Recommended formats: 555-555-1234 or (555) 555-1234
+  
+  Row 8, Column 'email': Email format appears invalid: user@domain
+    → Suggestion: Ensure email has format: user@domain.com
+
+Duplicate Patient IDs: TEST-001 (found in 2 rows)
+```
+
+## Field Validation Reference
+
+### Phone Number Validation (WARNING)
+
+**Valid Formats:**
+- `555-555-1234` (dashes)
+- `(555) 555-1234` (parentheses and space)
+
+**Invalid Formats (generate warnings):**
+- `5551234` (no formatting)
+- `555-1234` (missing area code)
+- `1-555-555-1234` (country code)
+- `555.555.1234` (dots instead of dashes)
+
+**Example Warning:**
+```
+Row 5, Column 'phone': Phone format may be invalid: 555-1234
+→ Suggestion: Recommended formats: 555-555-1234 or (555) 555-1234
+```
+
+**Fix:** Update phone to match one of the recommended formats or leave empty.
+
+### Email Validation (WARNING)
+
+**Valid Formats:**
+- `user@example.com`
+- `first.last@company.org`
+- `user+tag@domain.co.uk`
+
+**Invalid Formats (generate warnings):**
+- `user@domain` (missing TLD)
+- `user.domain.com` (missing @)
+- `@domain.com` (missing local part)
+- `user@` (missing domain)
+
+**Example Warning:**
+```
+Row 8, Column 'email': Email format appears invalid: user@domain
+→ Suggestion: Ensure email has format: user@domain.com
+```
+
+**Fix:** Ensure email includes `@` and valid domain with TLD (e.g., `.com`, `.org`).
+
+### SSN Validation (WARNING)
+
+**Valid Format:**
+- `123-45-6789` (with dashes)
+
+**Invalid Formats (generate warnings):**
+- `123456789` (no dashes)
+- `123-456-789` (wrong segment lengths)
+- `12-34-5678` (wrong segment lengths)
+
+**Example Warning:**
+```
+Row 10, Column 'ssn': SSN format invalid: 123456789
+→ Suggestion: Use format: 123-45-6789
+```
+
+**Fix:** Format SSN as XXX-XX-XXXX or leave empty (SSN is optional).
+
+### ZIP Code Validation (WARNING)
+
+**Valid Formats:**
+- `12345` (5-digit)
+- `12345-6789` (ZIP+4)
+
+**Invalid Formats (generate warnings):**
+- `1234` (too short)
+- `123456` (too long without dash)
+- `12345-67` (incomplete ZIP+4)
+
+**Example Warning:**
+```
+Row 15, Column 'zip': ZIP code format invalid: 1234
+→ Suggestion: Use format: 12345 or 12345-6789
+```
+
+**Fix:** Use 5-digit or 9-digit (ZIP+4) format.
+
+### Date of Birth Validation (WARNING)
+
+**Future Date Detection:**
+
+```
+Row 3, Column 'dob': Future date of birth: 2030-01-01
+→ Suggestion: Verify date is correct (YYYY-MM-DD format)
+```
+
+**Fix:** Verify the date is correct. Future dates are accepted but flagged as likely errors.
+
+**Unreasonable Age Detection:**
+
+```
+Row 7, Column 'dob': Unreasonable age detected: -5 years (dob: 2030-01-01)
+→ Suggestion: Verify date of birth is correct
+```
+
+```
+Row 12, Column 'dob': Unreasonable age detected: 150 years (dob: 1870-01-01)
+→ Suggestion: Verify date of birth is correct (person would be > 120 years old)
+```
+
+**Fix:** Verify the date is correct. Ages < 0 or > 120 years are flagged.
+
+### Duplicate Patient IDs (ERROR)
+
+**Detection:**
+Duplicate `patient_id` values across different rows cause validation errors.
+
+**Example Error:**
+```
+Row 5, Column 'patient_id': Duplicate patient_id found: TEST-001
+→ Suggestion: Ensure all patient IDs are unique or leave empty for auto-generation
+
+Row 12, Column 'patient_id': Duplicate patient_id found: TEST-001
+→ Suggestion: Ensure all patient IDs are unique or leave empty for auto-generation
+```
+
+**Fix Options:**
+1. Make patient IDs unique: Change one or both IDs to unique values
+2. Use auto-generation: Leave `patient_id` empty to auto-generate unique IDs
+3. Remove duplicate: If truly duplicate data, remove one row
+
+### Duplicate Names (WARNING)
+
+**Detection:**
+Duplicate combinations of `first_name` and `last_name` generate warnings.
+
+**Example Warning:**
+```
+Row 8, Column 'first_name': Duplicate name found: John Doe
+→ Suggestion: Verify this is intentional (legitimate duplicates are OK)
+```
+
+**Note:** Duplicate names may be legitimate (siblings, common names) so this is a warning, not an error.
+
+## Error CSV Export Feature
+
+### Overview
+
+When validation errors exist, you can export invalid rows to a separate CSV file for review and correction.
+
+### Usage
+
+```bash
+ihe-test-util csv validate patients.csv --export-errors errors.csv
+```
+
+### Error CSV Format
+
+The exported CSV includes:
+- All original columns from the input CSV
+- Additional `error_description` column with concatenated error messages
+
+**Example Error CSV:**
+
+```csv
+patient_id,patient_id_oid,first_name,last_name,dob,gender,error_description
+TEST-001,1.2.3.4,John,Doe,1980-01-01,M,"patient_id: Duplicate patient_id found: TEST-001"
+TEST-001,1.2.3.4,Jane,Smith,1990-02-15,F,"patient_id: Duplicate patient_id found: TEST-001"
+```
+
+### Workflow
+
+1. Run validation and export errors:
+   ```bash
+   ihe-test-util csv validate patients.csv --export-errors errors.csv
+   ```
+
+2. Review `errors.csv` to see which rows have issues
+
+3. Fix the issues in the original `patients.csv` file
+
+4. Re-run validation to confirm fixes:
+   ```bash
+   ihe-test-util csv validate patients.csv
+   ```
+
+### Notes
+
+- Only rows with **ERRORS** are exported (warnings are not included)
+- The `error_description` column contains all errors for that row, separated by semicolons if multiple
+- Original data is preserved to help identify and fix issues
+
+## JSON Output Format
+
+For machine-readable output (CI/CD integration), use the `--json` flag:
+
+```bash
+ihe-test-util csv validate patients.csv --json
+```
+
+**Example JSON Output:**
+
+```json
+{
+  "total_rows": 100,
+  "valid_rows": 95,
+  "error_rows": 3,
+  "warning_rows": 7,
+  "duplicate_patient_ids": ["TEST-001"],
+  "missing_oids_count": 0,
+  "errors": [
+    {
+      "row_number": 5,
+      "column_name": "patient_id",
+      "severity": "error",
+      "message": "Duplicate patient_id found: TEST-001",
+      "suggestion": "Ensure all patient IDs are unique or leave empty for auto-generation"
+    }
+  ],
+  "warnings": [
+    {
+      "row_number": 3,
+      "column_name": "phone",
+      "severity": "warning",
+      "message": "Phone format may be invalid: 555-1234",
+      "suggestion": "Recommended formats: 555-555-1234 or (555) 555-1234"
+    }
+  ]
+}
+```
+
+## Troubleshooting Validation Issues
+
+### Common Validation Errors
+
+#### All Patient IDs Are Duplicates
+
+**Symptom:** Every row shows duplicate patient_id error.
+
+**Cause:** Same patient_id used for multiple rows.
+
+**Solution:**
+1. Make each patient_id unique: `TEST-001`, `TEST-002`, `TEST-003`, etc.
+2. Or leave patient_id empty to use auto-generation
+
+#### Validation Errors After Fixing Issues
+
+**Symptom:** Fixed data but validation still fails.
+
+**Cause:** Row numbers in error messages are 1-indexed (include header row).
+
+**Solution:** Row 5 in error message = data row 4 (header is row 1).
+
+#### CSV Shows "Valid" But Has Warnings
+
+**Symptom:** Validation passes (exit code 0) but warnings displayed.
+
+**Cause:** Warnings don't block processing, only errors do.
+
+**Solution:** Review warnings and fix if needed, but processing can continue.
+
+### Validation FAQ
+
+**Q: Do warnings cause validation to fail?**  
+A: No. Only errors cause failure (exit code 1). Warnings are informational and don't block processing.
+
+**Q: Can I disable validation?**  
+A: In code, yes: `parse_csv(file_path, validate=False)`. The CLI always validates.
+
+**Q: Why is my phone number invalid?**  
+A: Phone validation expects `555-555-1234` or `(555) 555-1234`. Other formats generate warnings.
+
+**Q: Can duplicate names cause errors?**  
+A: No. Duplicate names generate warnings only, as they may be legitimate (siblings, common names).
+
+**Q: What if I have legitimate duplicate patient IDs?**  
+A: Patient IDs must be unique within a batch. Use different IDs or different patient_id_oid domains.
+
+**Q: How do I fix "unreasonable age" warnings?**  
+A: Verify the date of birth is correct. Ages < 0 or > 120 years are flagged but accepted.
+
+**Q: Can I see only errors, not warnings?**  
+A: Use `--export-errors` to export only rows with errors. Or parse JSON output and filter by severity.
+
+**Q: Does validation check for invalid dates like Feb 30?**  
+A: Yes, pandas date parsing rejects invalid calendar dates automatically.
+
 ## See Also
 
 - [Architecture Documentation](architecture.md) - Overall system architecture

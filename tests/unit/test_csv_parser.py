@@ -24,16 +24,17 @@ class TestParseCSVValidData:
         csv_file.write_text(csv_content, encoding="utf-8")
 
         # Act
-        result = parse_csv(csv_file)
+        df, validation_result = parse_csv(csv_file)
 
         # Assert
-        assert len(result) == 2
-        assert result.iloc[0]["first_name"] == "John"
-        assert result.iloc[0]["last_name"] == "Doe"
-        assert result.iloc[0]["dob"] == "1980-01-15"
-        assert result.iloc[0]["gender"] == "M"
-        assert result.iloc[0]["patient_id_oid"] == "1.2.3.4.5"
-        assert result.iloc[1]["first_name"] == "Jane"
+        assert len(df) == 2
+        assert df.iloc[0]["first_name"] == "John"
+        assert df.iloc[0]["last_name"] == "Doe"
+        assert df.iloc[0]["dob"] == "1980-01-15"
+        assert df.iloc[0]["gender"] == "M"
+        assert df.iloc[0]["patient_id_oid"] == "1.2.3.4.5"
+        assert df.iloc[1]["first_name"] == "Jane"
+        assert validation_result is not None  # Validation ran by default
 
     def test_parse_csv_with_required_and_optional_columns(self, tmp_path):
         """Test parsing CSV with required and optional columns."""
@@ -46,14 +47,14 @@ class TestParseCSVValidData:
         csv_file.write_text(csv_content, encoding="utf-8")
 
         # Act
-        result = parse_csv(csv_file)
+        df, _ = parse_csv(csv_file)
 
         # Assert
-        assert len(result) == 1
-        assert result.iloc[0]["patient_id"] == "PAT001"
-        assert result.iloc[0]["mrn"] == "MRN001"
-        assert result.iloc[0]["email"] == "john@example.com"
-        assert result.iloc[0]["phone"] == "555-1234"
+        assert len(df) == 1
+        assert df.iloc[0]["patient_id"] == "PAT001"
+        assert df.iloc[0]["mrn"] == "MRN001"
+        assert df.iloc[0]["email"] == "john@example.com"
+        assert df.iloc[0]["phone"] == "555-1234"
 
     def test_parse_csv_with_empty_optional_columns(self, tmp_path):
         """Test parsing CSV with empty optional columns."""
@@ -66,12 +67,12 @@ class TestParseCSVValidData:
         csv_file.write_text(csv_content, encoding="utf-8")
 
         # Act
-        result = parse_csv(csv_file)
+        df, _ = parse_csv(csv_file)
 
         # Assert
-        assert len(result) == 1
-        assert pd.isna(result.iloc[0]["email"]) or result.iloc[0]["email"] == ""
-        assert pd.isna(result.iloc[0]["phone"]) or result.iloc[0]["phone"] == ""
+        assert len(df) == 1
+        assert pd.isna(df.iloc[0]["email"]) or df.iloc[0]["email"] == ""
+        assert pd.isna(df.iloc[0]["phone"]) or df.iloc[0]["phone"] == ""
 
     def test_parse_csv_with_utf8_special_characters(self, tmp_path):
         """Test parsing CSV with UTF-8 special characters in names."""
@@ -86,16 +87,16 @@ class TestParseCSVValidData:
         csv_file.write_text(csv_content, encoding="utf-8")
 
         # Act
-        result = parse_csv(csv_file)
+        df, _ = parse_csv(csv_file)
 
         # Assert
-        assert len(result) == 3
-        assert result.iloc[0]["first_name"] == "José"
-        assert result.iloc[0]["last_name"] == "García"
-        assert result.iloc[1]["first_name"] == "François"
-        assert result.iloc[1]["last_name"] == "O'Neill"
-        assert result.iloc[2]["first_name"] == "Müller"
-        assert result.iloc[2]["last_name"] == "Schmidt-Weber"
+        assert len(df) == 3
+        assert df.iloc[0]["first_name"] == "José"
+        assert df.iloc[0]["last_name"] == "García"
+        assert df.iloc[1]["first_name"] == "François"
+        assert df.iloc[1]["last_name"] == "O'Neill"
+        assert df.iloc[2]["first_name"] == "Müller"
+        assert df.iloc[2]["last_name"] == "Schmidt-Weber"
 
     def test_parse_csv_with_quotes_and_commas_in_fields(self, tmp_path):
         """Test parsing CSV with commas and quotes in address fields."""
@@ -108,11 +109,11 @@ class TestParseCSVValidData:
         csv_file.write_text(csv_content, encoding="utf-8")
 
         # Act
-        result = parse_csv(csv_file)
+        df, _ = parse_csv(csv_file)
 
         # Assert
-        assert len(result) == 1
-        assert result.iloc[0]["address"] == "123 Main St, Apt 4"
+        assert len(df) == 1
+        assert df.iloc[0]["address"] == "123 Main St, Apt 4"
 
     def test_parse_csv_normalizes_gender_to_uppercase(self, tmp_path):
         """Test that gender values are normalized to uppercase."""
@@ -128,13 +129,13 @@ class TestParseCSVValidData:
         csv_file.write_text(csv_content, encoding="utf-8")
 
         # Act
-        result = parse_csv(csv_file)
+        df, _ = parse_csv(csv_file)
 
         # Assert
-        assert result.iloc[0]["gender"] == "M"
-        assert result.iloc[1]["gender"] == "F"
-        assert result.iloc[2]["gender"] == "O"
-        assert result.iloc[3]["gender"] == "U"
+        assert df.iloc[0]["gender"] == "M"
+        assert df.iloc[1]["gender"] == "F"
+        assert df.iloc[2]["gender"] == "O"
+        assert df.iloc[3]["gender"] == "U"
 
 
 class TestParseCSVValidationErrors:
@@ -409,12 +410,12 @@ class TestParseCSVPatientIdGeneration:
 
         # Act
         with caplog.at_level(logging.INFO):
-            result = parse_csv(csv_file)
+            df, _ = parse_csv(csv_file)
 
         # Assert
-        assert len(result) == 2
-        assert result.iloc[0]["patient_id"] == "PAT001"
-        assert result.iloc[1]["patient_id"] == "PAT002"
+        assert len(df) == 2
+        assert df.iloc[0]["patient_id"] == "PAT001"
+        assert df.iloc[1]["patient_id"] == "PAT002"
         assert "ID generation summary: 0 generated, 2 provided" in caplog.text
         assert "Using provided patient ID PAT001" in caplog.text
         assert "Using provided patient ID PAT002" in caplog.text
@@ -432,15 +433,15 @@ class TestParseCSVPatientIdGeneration:
 
         # Act
         with caplog.at_level(logging.INFO):
-            result = parse_csv(csv_file, seed=42)
+            df, _ = parse_csv(csv_file, seed=42)
 
         # Assert
-        assert len(result) == 2
-        assert result.iloc[0]["patient_id"].startswith("TEST-")
-        assert result.iloc[1]["patient_id"].startswith("TEST-")
-        assert result.iloc[0]["patient_id"] != result.iloc[1]["patient_id"]
-        assert len(result.iloc[0]["patient_id"]) == 41  # TEST- (5) + UUID (36)
-        assert len(result.iloc[1]["patient_id"]) == 41
+        assert len(df) == 2
+        assert df.iloc[0]["patient_id"].startswith("TEST-")
+        assert df.iloc[1]["patient_id"].startswith("TEST-")
+        assert df.iloc[0]["patient_id"] != df.iloc[1]["patient_id"]
+        assert len(df.iloc[0]["patient_id"]) == 41  # TEST- (5) + UUID (36)
+        assert len(df.iloc[1]["patient_id"]) == 41
         assert "ID generation summary: 2 generated, 0 provided" in caplog.text
         assert "Generated patient ID TEST-" in caplog.text
 
@@ -458,14 +459,14 @@ class TestParseCSVPatientIdGeneration:
 
         # Act
         with caplog.at_level(logging.INFO):
-            result = parse_csv(csv_file, seed=100)
+            df, _ = parse_csv(csv_file, seed=100)
 
         # Assert
-        assert len(result) == 3
-        assert result.iloc[0]["patient_id"].startswith("TEST-")  # Generated
-        assert result.iloc[1]["patient_id"] == "PAT002"  # Provided
-        assert result.iloc[2]["patient_id"].startswith("TEST-")  # Generated
-        assert result.iloc[0]["patient_id"] != result.iloc[2]["patient_id"]  # Different IDs
+        assert len(df) == 3
+        assert df.iloc[0]["patient_id"].startswith("TEST-")  # Generated
+        assert df.iloc[1]["patient_id"] == "PAT002"  # Provided
+        assert df.iloc[2]["patient_id"].startswith("TEST-")  # Generated
+        assert df.iloc[0]["patient_id"] != df.iloc[2]["patient_id"]  # Different IDs
         assert "ID generation summary: 2 generated, 1 provided" in caplog.text
         assert "Using provided patient ID PAT002" in caplog.text
         assert caplog.text.count("Generated patient ID TEST-") == 2
@@ -483,16 +484,16 @@ class TestParseCSVPatientIdGeneration:
         csv_file.write_text(csv_content, encoding="utf-8")
 
         # Act
-        result = parse_csv(csv_file, seed=42)
+        df, _ = parse_csv(csv_file, seed=42)
 
         # Assert
-        assert result.iloc[0]["patient_id_oid"] == "1.2.3.4.5"
-        assert result.iloc[1]["patient_id_oid"] == "2.3.4.5.6"
-        assert result.iloc[2]["patient_id_oid"] == "3.4.5.6.7"
+        assert df.iloc[0]["patient_id_oid"] == "1.2.3.4.5"
+        assert df.iloc[1]["patient_id_oid"] == "2.3.4.5.6"
+        assert df.iloc[2]["patient_id_oid"] == "3.4.5.6.7"
         # Verify IDs were generated/preserved correctly
-        assert result.iloc[0]["patient_id"].startswith("TEST-")
-        assert result.iloc[1]["patient_id"] == "PAT002"
-        assert result.iloc[2]["patient_id"].startswith("TEST-")
+        assert df.iloc[0]["patient_id"].startswith("TEST-")
+        assert df.iloc[1]["patient_id"] == "PAT002"
+        assert df.iloc[2]["patient_id"].startswith("TEST-")
 
     def test_parse_csv_with_seed_produces_deterministic_ids(self, tmp_path):
         """Test that same seed produces same sequence of generated IDs."""
@@ -507,15 +508,15 @@ class TestParseCSVPatientIdGeneration:
         csv_file.write_text(csv_content, encoding="utf-8")
 
         # Act - parse twice with same seed
-        result1 = parse_csv(csv_file, seed=999)
-        result2 = parse_csv(csv_file, seed=999)
+        df1, _ = parse_csv(csv_file, seed=999)
+        df2, _ = parse_csv(csv_file, seed=999)
 
         # Assert - generated IDs should be identical
-        assert result1.iloc[0]["patient_id"] == result2.iloc[0]["patient_id"]
-        assert result1.iloc[1]["patient_id"] == result2.iloc[1]["patient_id"]
-        assert result1.iloc[2]["patient_id"] == result2.iloc[2]["patient_id"]
+        assert df1.iloc[0]["patient_id"] == df2.iloc[0]["patient_id"]
+        assert df1.iloc[1]["patient_id"] == df2.iloc[1]["patient_id"]
+        assert df1.iloc[2]["patient_id"] == df2.iloc[2]["patient_id"]
         # All should be generated (start with TEST-)
-        assert all(result1["patient_id"].str.startswith("TEST-"))
+        assert all(df1["patient_id"].str.startswith("TEST-"))
 
     def test_parse_csv_without_patient_id_column(self, tmp_path, caplog):
         """Test CSV without patient_id column creates it with generated IDs."""
@@ -530,13 +531,13 @@ class TestParseCSVPatientIdGeneration:
 
         # Act
         with caplog.at_level(logging.INFO):
-            result = parse_csv(csv_file, seed=123)
+            df, _ = parse_csv(csv_file, seed=123)
 
         # Assert
-        assert "patient_id" in result.columns
-        assert len(result) == 2
-        assert result.iloc[0]["patient_id"].startswith("TEST-")
-        assert result.iloc[1]["patient_id"].startswith("TEST-")
+        assert "patient_id" in df.columns
+        assert len(df) == 2
+        assert df.iloc[0]["patient_id"].startswith("TEST-")
+        assert df.iloc[1]["patient_id"].startswith("TEST-")
         assert "patient_id column not found in CSV, creating with auto-generated IDs" in caplog.text
         assert "ID generation summary: 2 generated, 0 provided" in caplog.text
 
@@ -552,12 +553,12 @@ class TestParseCSVPatientIdGeneration:
         csv_file.write_text(csv_content, encoding="utf-8")
 
         # Act
-        result = parse_csv(csv_file, seed=50)
+        df, _ = parse_csv(csv_file, seed=50)
 
         # Assert
-        assert len(result) == 2
-        assert result.iloc[0]["patient_id"].startswith("TEST-")
-        assert result.iloc[1]["patient_id"].startswith("TEST-")
+        assert len(df) == 2
+        assert df.iloc[0]["patient_id"].startswith("TEST-")
+        assert df.iloc[1]["patient_id"].startswith("TEST-")
 
     def test_parse_csv_logs_seed_usage(self, tmp_path, caplog):
         """Test that seed usage is logged when seed is provided."""
@@ -592,12 +593,12 @@ class TestParseCSVPatientIdGeneration:
         csv_file.write_text(csv_content, encoding="utf-8")
 
         # Act
-        result = parse_csv(csv_file)
+        df, _ = parse_csv(csv_file)
 
         # Assert
         import re
         uuid_pattern = r"TEST-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
-        for idx in range(len(result)):
-            patient_id = result.iloc[idx]["patient_id"]
+        for idx in range(len(df)):
+            patient_id = df.iloc[idx]["patient_id"]
             assert re.match(uuid_pattern, patient_id), f"ID {patient_id} does not match format"
             assert len(patient_id) == 41

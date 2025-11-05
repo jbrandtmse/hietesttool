@@ -8,6 +8,7 @@ from typing import Optional
 import click
 
 from ihe_test_util import __version__
+from ihe_test_util.cli.csv_commands import csv
 
 
 @click.group()
@@ -23,6 +24,10 @@ def cli(ctx: click.Context) -> None:
     """
     # Ensure context object exists for subcommands
     ctx.ensure_object(dict)
+
+
+# Register command groups
+cli.add_command(csv)
 
 
 @cli.command()

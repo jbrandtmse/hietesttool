@@ -23,7 +23,7 @@ Bob,Jones,1990-10-20,M,1.2.3.4,"""
         csv_file.write_text(csv_content, encoding="utf-8")
 
         # Act: Parse CSV with seed for reproducibility
-        df = parse_csv(csv_file, seed=42)
+        df, _ = parse_csv(csv_file, seed=42)
 
         # Assert: Verify all patients have IDs
         assert len(df) == 3
@@ -51,7 +51,7 @@ Jane,Smith,1975-05-15,F,2.3.4.5.6,MRN002,jane@example.com"""
         csv_file.write_text(csv_content, encoding="utf-8")
 
         # Act
-        df = parse_csv(csv_file, seed=100)
+        df, _ = parse_csv(csv_file, seed=100)
 
         # Assert: Verify DataFrame structure
         expected_columns = ["first_name", "last_name", "dob", "gender", "patient_id_oid", "mrn", "email", "patient_id"]
@@ -84,7 +84,7 @@ Patient5,Test,1984-05-05,M,1.2.3.4,"""
         csv_file.write_text(csv_content, encoding="utf-8")
 
         # Act
-        df = parse_csv(csv_file, seed=777)
+        df, _ = parse_csv(csv_file, seed=777)
 
         # Assert: Verify all IDs match format
         uuid_pattern = r"TEST-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
@@ -108,7 +108,7 @@ Patient5,Test,1984-05-05,M,1.2.3.4,"""
         csv_file.write_text(csv_content, encoding="utf-8")
 
         # Act
-        df = parse_csv(csv_file)
+        df, _ = parse_csv(csv_file)
 
         # Assert: Verify all IDs are unique
         patient_ids = df["patient_id"].tolist()
@@ -131,9 +131,9 @@ Bob,Jones,1990-10-20,M,1.2.3.4,"""
         seed = 12345
 
         # Act: Parse same file multiple times with same seed
-        df1 = parse_csv(csv_file, seed=seed)
-        df2 = parse_csv(csv_file, seed=seed)
-        df3 = parse_csv(csv_file, seed=seed)
+        df1, _ = parse_csv(csv_file, seed=seed)
+        df2, _ = parse_csv(csv_file, seed=seed)
+        df3, _ = parse_csv(csv_file, seed=seed)
 
         # Assert: All runs should produce identical IDs
         for i in range(len(df1)):
@@ -154,7 +154,7 @@ Patient6,Test,1985-06-06,F,6.7.8.9.0,"""
         csv_file.write_text(csv_content, encoding="utf-8")
 
         # Act
-        df = parse_csv(csv_file, seed=555)
+        df, _ = parse_csv(csv_file, seed=555)
 
         # Assert: Verify mix of provided and generated
         assert df.iloc[0]["patient_id"] == "PROVIDED-001"  # Provided
@@ -187,7 +187,7 @@ Bob,Jones,1990-10-20,M,3.4.5.6.7,MRN003"""
         csv_file.write_text(csv_content, encoding="utf-8")
 
         # Act
-        df = parse_csv(csv_file, seed=999)
+        df, _ = parse_csv(csv_file, seed=999)
 
         # Assert: patient_id column created with generated IDs
         assert "patient_id" in df.columns
@@ -222,8 +222,8 @@ TestPatient3,Test,1982-03-03,O,1.2.3.4"""
         seed = 2024
 
         # Act: Parse both files with same seed
-        df1 = parse_csv(csv_file1, seed=seed)
-        df2 = parse_csv(csv_file2, seed=seed)
+        df1, _ = parse_csv(csv_file1, seed=seed)
+        df2, _ = parse_csv(csv_file2, seed=seed)
 
         # Assert: Generated IDs should be identical
         assert df1.iloc[0]["patient_id"] == df2.iloc[0]["patient_id"]
@@ -251,7 +251,7 @@ TestPatient3,Test,1982-03-03,O,1.2.3.4"""
         csv_file.write_text(csv_content, encoding="utf-8")
 
         # Act
-        df = parse_csv(csv_file, seed=12345)
+        df, _ = parse_csv(csv_file, seed=12345)
 
         # Assert
         assert len(df) == 100

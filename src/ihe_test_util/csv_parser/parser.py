@@ -12,6 +12,7 @@ from typing import Optional
 import pandas as pd
 
 from ihe_test_util.csv_parser.id_generator import generate_patient_id, reset_generated_ids
+from ihe_test_util.csv_parser.validator import validate_demographics, ValidationResult
 from ihe_test_util.utils.exceptions import ValidationError
 
 
@@ -40,7 +41,9 @@ VALID_GENDERS = ["M", "F", "O", "U"]
 MIN_BIRTH_YEAR = 1900
 
 
-def parse_csv(file_path: Path, seed: Optional[int] = None) -> pd.DataFrame:
+def parse_csv(
+    file_path: Path, seed: Optional[int] = None, validate: bool = True
+) -> tuple[pd.DataFrame, Optional[ValidationResult]]:
     """Parse patient demographics from CSV file.
 
     Validates required columns, data formats, and returns a pandas DataFrame
@@ -52,11 +55,17 @@ def parse_csv(file_path: Path, seed: Optional[int] = None) -> pd.DataFrame:
         seed: Optional random seed for deterministic patient ID generation.
               When provided, enables reproducible test data generation with
               the same sequence of auto-generated IDs across runs.
+        validate: If True, runs comprehensive validation after basic parsing.
+                  Warnings are logged but don't fail parsing. Errors raise
+                  ValidationError. If False, skips comprehensive validation.
 
     Returns:
-        pandas DataFrame with validated patient demographics. All validation
-        rules have been applied and data is ready for downstream processing.
-        Any missing patient_id values will be auto-generated in TEST-{UUID} format.
+        Tuple of (DataFrame, ValidationResult):
+        - DataFrame with validated patient demographics. All validation
+          rules have been applied and data is ready for downstream processing.
+          Any missing patient_id values will be auto-generated in TEST-{UUID} format.
+        - ValidationResult with comprehensive validation details, or None if
+          validate=False
 
     Raises:
         ValidationError: If required columns missing, data invalid, or format errors
@@ -131,7 +140,25 @@ def parse_csv(file_path: Path, seed: Optional[int] = None) -> pd.DataFrame:
 
     logger.info(f"Successfully parsed {len(df)} patient record(s)")
 
-    return df
+    # Run comprehensive validation if requested
+    validation_result = None
+    if validate:
+        logger.info("Running comprehensive validation")
+        validation_result = validate_demographics(df)
+
+        # Log all warnings
+        for warning in validation_result.all_warnings:
+            logger.warning(
+                f"Row {warning.row_number} [{warning.column_name}]: {warning.message}"
+            )
+
+        # Log validation summary
+        logger.info(
+            f"Comprehensive validation complete: {len(validation_result.all_errors)} errors, "
+            f"{len(validation_result.all_warnings)} warnings"
+        )
+
+    return df, validation_result
 
 
 def _validate_dob_column(df: pd.DataFrame) -> list[str]:
