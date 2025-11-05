@@ -39,16 +39,29 @@ def validate_csv_command(
     """Validate patient demographics CSV file.
 
     Performs comprehensive validation including:
+    - Required field validation (first_name, last_name, dob, gender, patient_id_oid)
     - Field format validation (phone, email, SSN, ZIP)
     - Date validation (future dates, unreasonable ages)
     - Batch validation (duplicate patient IDs, duplicate names)
 
     Exits with code 0 for success (warnings are OK), code 1 for validation errors.
 
-    Example:
+    Examples:
+
+        # Basic validation with color-coded output
         ihe-test-util csv validate patients.csv
-        ihe-test-util csv validate patients.csv --export-errors errors.csv
+
+        # Validate and export invalid rows to a separate file
+        ihe-test-util csv validate patients.csv --export-errors invalid_rows.csv
+
+        # Output validation results in JSON format for automation
         ihe-test-util csv validate patients.csv --json
+
+        # Validate with verbose logging for debugging
+        ihe-test-util --verbose csv validate patients.csv
+
+        # Capture output to log file
+        ihe-test-util csv validate patients.csv > validation.log 2>&1
     """
     try:
         logger.info(f"Validating CSV file: {file}")
@@ -110,4 +123,120 @@ def validate_csv_command(
     except Exception as e:
         click.secho(f"Unexpected error: {e}", fg="red", err=True)
         logger.exception("Unexpected error during CSV validation")
+        sys.exit(1)
+
+
+@csv.command("process")
+@click.argument("file", type=click.Path(exists=True, path_type=Path))
+@click.option(
+    "--output",
+    type=click.Path(path_type=Path),
+    help="Output directory (default: current directory)",
+)
+@click.option("--seed", type=int, help="Seed for reproducible patient ID generation")
+def process_csv_command(
+    file: Path, output: Optional[Path], seed: Optional[int]
+) -> None:
+    """Process and display patient demographics from CSV file.
+
+    Validates the CSV file and displays a summary of parsed patient records.
+    Automatically generates patient IDs for rows with missing IDs.
+
+    With --seed option, ID generation is reproducible across runs, enabling
+    consistent test data generation.
+
+    Examples:
+
+        # Process CSV and display patient summary
+        ihe-test-util csv process patients.csv
+
+        # Process with reproducible ID generation
+        ihe-test-util csv process patients.csv --seed 42
+
+        # Process and specify output directory
+        ihe-test-util csv process patients.csv --output ./output
+
+        # Process with verbose logging
+        ihe-test-util --verbose csv process patients.csv
+    """
+    try:
+        click.echo(f"Processing CSV file: {file}")
+        logger.info(f"Processing CSV file: {file}")
+
+        # Parse and validate CSV
+        df, result = parse_csv(file, seed=seed, validate=True)
+
+        if result is None:
+            # Should not happen with validate=True, but handle gracefully
+            click.secho(
+                "Warning: Validation was not performed", fg="yellow", err=True
+            )
+            logger.warning("Validation result is None")
+
+        # Check for validation errors
+        if result and result.has_errors:
+            click.secho("Validation failed with errors:", fg="red", err=True)
+            report = result.format_report()
+            click.secho(report, fg="red", err=True)
+            logger.error("Processing failed due to validation errors")
+            sys.exit(1)
+
+        # Count auto-generated vs provided IDs
+        generated_count = 0
+        provided_count = 0
+
+        for patient_id in df["patient_id"]:
+            if patient_id.startswith("TEST-"):
+                generated_count += 1
+            else:
+                provided_count += 1
+
+        # Display summary
+        click.echo(f"Total patients: {len(df)}")
+        click.echo(f"  - Auto-generated IDs: {generated_count}")
+        click.echo(f"  - Provided IDs: {provided_count}")
+
+        # Display patient records
+        click.echo("\nPatient Summary:")
+        for idx, row in df.iterrows():
+            patient_num = idx + 1
+            patient_id = row["patient_id"]
+            last_name = row["last_name"]
+            first_name = row["first_name"]
+            dob = row["dob"]
+            gender = row["gender"]
+
+            click.echo(
+                f"  {patient_num}. {patient_id} | {last_name}, {first_name} | {dob} | {gender}"
+            )
+
+        # Display warnings if any
+        if result and result.has_warnings:
+            click.echo()
+            click.secho(
+                f"Note: {len(result.all_warnings)} warning(s) found during validation",
+                fg="yellow",
+            )
+            click.echo("Use 'csv validate' command for detailed validation report")
+
+        click.echo()
+        click.secho("Processing complete", fg="green")
+        logger.info("CSV processing complete. Exit code: 0")
+        sys.exit(0)
+
+    except ValidationError as e:
+        click.secho(f"Validation Error: {e}", fg="red", err=True)
+        logger.error(f"Validation error: {e}")
+        sys.exit(1)
+    except FileNotFoundError as e:
+        click.secho(
+            f"Error: File not found: {file}. Ensure file path is correct.",
+            fg="red",
+            err=True,
+        )
+        logger.error(f"File not found: {e}")
+        sys.exit(1)
+    except Exception as e:
+        click.secho(f"Unexpected error: {e}", fg="red", err=True)
+        logger.exception("Unexpected error during CSV processing")
         sys.exit(1)

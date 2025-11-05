@@ -83,6 +83,79 @@ python -c "from ihe_test_util import __version__; print(__version__)"
 
 ## Quick Start
 
+### Getting Started with the CLI
+
+After installation, the `ihe-test-util` command is available system-wide:
+
+```bash
+# Display help and available commands
+ihe-test-util --help
+
+# Display version information
+ihe-test-util --version
+```
+
+### CSV Operations
+
+#### Validating Patient Data
+
+Validate a CSV file containing patient demographics:
+
+```bash
+# Basic validation with color-coded output
+ihe-test-util csv validate patients.csv
+
+# Export invalid rows to a separate file
+ihe-test-util csv validate patients.csv --export-errors invalid_rows.csv
+
+# Output validation results in JSON format for automation
+ihe-test-util csv validate patients.csv --json
+
+# Validate with verbose logging for debugging
+ihe-test-util --verbose csv validate patients.csv
+```
+
+#### Processing Patient Data
+
+Process and display patient demographics from CSV:
+
+```bash
+# Process CSV and display patient summary
+ihe-test-util csv process patients.csv
+
+# Process with reproducible ID generation (deterministic)
+ihe-test-util csv process patients.csv --seed 42
+
+# Process and specify output directory
+ihe-test-util csv process patients.csv --output ./output
+
+# Process with verbose logging
+ihe-test-util --verbose csv process patients.csv
+```
+
+#### CSV File Format
+
+Your CSV file should include these required columns:
+- `first_name` - Patient's first name
+- `last_name` - Patient's last name
+- `dob` - Date of birth (YYYY-MM-DD format)
+- `gender` - Gender (M, F, O, U)
+- `patient_id_oid` - OID for patient identifier domain
+
+Optional columns:
+- `patient_id` - Patient identifier (auto-generated if not provided)
+- `mrn` - Medical record number
+- `ssn` - Social security number
+- `address`, `city`, `state`, `zip` - Address information
+- `phone`, `email` - Contact information
+
+Example CSV:
+```csv
+first_name,last_name,dob,gender,patient_id_oid,patient_id
+John,Doe,1980-01-01,M,1.2.3.4,TEST-001
+Jane,Smith,1975-05-15,F,1.2.3.4,TEST-002
+```
+
 ### Running Mock IHE Endpoints
 
 ```bash
@@ -93,23 +166,53 @@ python -m ihe_test_util.mock_server.app
 python -m ihe_test_util.mock_server.app --port 8080
 ```
 
-### PIX Add Transaction Example
+### Common CLI Options
 
+- `--verbose` - Enable verbose logging (DEBUG level) for troubleshooting
+- `--version` - Display version information
+- `--help` - Display help for any command
+
+### Exit Codes
+
+The CLI uses standard exit codes:
+- `0` - Success (including validation warnings)
+- `1` - Validation errors or processing failures
+- `2` - Invalid command-line arguments or file not found
+
+### Troubleshooting
+
+#### File Not Found Errors
+
+If you see "File not found" errors:
+1. Verify the file path is correct (use absolute paths if needed)
+2. Ensure the file exists in the specified location
+3. Check file permissions
+
+#### Validation Errors
+
+If validation fails:
+1. Review the error messages for specific issues
+2. Use `--export-errors` to identify invalid rows
+3. Check the CSV format matches the expected structure
+4. Ensure dates are in YYYY-MM-DD format
+5. Verify gender values are M, F, O, or U
+
+#### Need More Details?
+
+Use the `--verbose` flag to see detailed logging:
 ```bash
-# Using CLI (future implementation)
-ihe-test-util pix-add --csv patients.csv --endpoint http://localhost:5000/PIXManager
-
-# Using Python API
-python examples/hl7v3_message_example.py
+ihe-test-util --verbose csv validate patients.csv
 ```
 
-### ITI-41 Document Submission Example
+### Python API Examples
+
+For programmatic usage, see the Python API examples:
 
 ```bash
-# Using CLI (future implementation)
-ihe-test-util submit-document --csv patients.csv --template ccd_template.xml
+# PIX Add transaction example
+python examples/hl7v3_message_example.py
 
-# Using Python API
+# SAML signing example
 python examples/signxml_saml_example.py
 ```
 
