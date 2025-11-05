@@ -122,7 +122,7 @@ ihe-test-utility/
 │       └── test_key.pem                # Test private key
 ├── examples/
 │   ├── config.example.json             # Example configuration file
-│   ├── patients_sample.csv             # Sample patient data (10 patients)
+│   ├── patients_sample.csv             # Sample patient data (30 diverse patients - Story 1.5)
 │   ├── patients_minimal.csv            # Minimal CSV example
 │   └── tutorials/
 │       ├── 01-csv-validation.md        # Tutorial: CSV validation
@@ -198,4 +198,3 @@ from ihe_test_util.ihe_transactions.pix_add import submit_pix_add
 # External usage after installation
 from ihe_test_util import __version__
 ```
-
