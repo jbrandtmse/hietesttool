@@ -391,3 +391,213 @@ class TestParseCSVLogging:
 
         # Assert
         assert "in the future" in caplog.text
+
+
+class TestParseCSVPatientIdGeneration:
+    """Test patient ID auto-generation functionality."""
+
+    def test_parse_csv_with_all_patient_ids_provided(self, tmp_path, caplog):
+        """Test CSV with all patient_id values provided (no generation)."""
+        # Arrange
+        csv_file = tmp_path / "patients.csv"
+        csv_content = (
+            "first_name,last_name,dob,gender,patient_id_oid,patient_id\n"
+            "John,Doe,1980-01-15,M,1.2.3.4.5,PAT001\n"
+            "Jane,Smith,1975-06-20,F,1.2.3.4.6,PAT002\n"
+        )
+        csv_file.write_text(csv_content, encoding="utf-8")
+
+        # Act
+        with caplog.at_level(logging.INFO):
+            result = parse_csv(csv_file)
+
+        # Assert
+        assert len(result) == 2
+        assert result.iloc[0]["patient_id"] == "PAT001"
+        assert result.iloc[1]["patient_id"] == "PAT002"
+        assert "ID generation summary: 0 generated, 2 provided" in caplog.text
+        assert "Using provided patient ID PAT001" in caplog.text
+        assert "Using provided patient ID PAT002" in caplog.text
+
+    def test_parse_csv_with_all_patient_ids_missing(self, tmp_path, caplog):
+        """Test CSV with all patient_id values missing (all generated)."""
+        # Arrange
+        csv_file = tmp_path / "patients.csv"
+        csv_content = (
+            "first_name,last_name,dob,gender,patient_id_oid,patient_id\n"
+            "John,Doe,1980-01-15,M,1.2.3.4.5,\n"
+            "Jane,Smith,1975-06-20,F,1.2.3.4.6,\n"
+        )
+        csv_file.write_text(csv_content, encoding="utf-8")
+
+        # Act
+        with caplog.at_level(logging.INFO):
+            result = parse_csv(csv_file, seed=42)
+
+        # Assert
+        assert len(result) == 2
+        assert result.iloc[0]["patient_id"].startswith("TEST-")
+        assert result.iloc[1]["patient_id"].startswith("TEST-")
+        assert result.iloc[0]["patient_id"] != result.iloc[1]["patient_id"]
+        assert len(result.iloc[0]["patient_id"]) == 41  # TEST- (5) + UUID (36)
+        assert len(result.iloc[1]["patient_id"]) == 41
+        assert "ID generation summary: 2 generated, 0 provided" in caplog.text
+        assert "Generated patient ID TEST-" in caplog.text
+
+    def test_parse_csv_with_mixed_patient_ids(self, tmp_path, caplog):
+        """Test CSV with mix of provided and missing patient_id values."""
+        # Arrange
+        csv_file = tmp_path / "patients.csv"
+        csv_content = (
+            "first_name,last_name,dob,gender,patient_id_oid,patient_id\n"
+            "John,Doe,1980-01-15,M,1.2.3.4.5,\n"
+            "Jane,Smith,1975-06-20,F,1.2.3.4.6,PAT002\n"
+            "Bob,Jones,1990-10-20,M,1.2.3.4.7,\n"
+        )
+        csv_file.write_text(csv_content, encoding="utf-8")
+
+        # Act
+        with caplog.at_level(logging.INFO):
+            result = parse_csv(csv_file, seed=100)
+
+        # Assert
+        assert len(result) == 3
+        assert result.iloc[0]["patient_id"].startswith("TEST-")  # Generated
+        assert result.iloc[1]["patient_id"] == "PAT002"  # Provided
+        assert result.iloc[2]["patient_id"].startswith("TEST-")  # Generated
+        assert result.iloc[0]["patient_id"] != result.iloc[2]["patient_id"]  # Different IDs
+        assert "ID generation summary: 2 generated, 1 provided" in caplog.text
+        assert "Using provided patient ID PAT002" in caplog.text
+        assert caplog.text.count("Generated patient ID TEST-") == 2
+
+    def test_parse_csv_preserves_patient_id_oid_for_all_patients(self, tmp_path):
+        """Test that patient_id_oid is preserved for both provided and generated IDs."""
+        # Arrange
+        csv_file = tmp_path / "patients.csv"
+        csv_content = (
+            "first_name,last_name,dob,gender,patient_id_oid,patient_id\n"
+            "John,Doe,1980-01-15,M,1.2.3.4.5,\n"
+            "Jane,Smith,1975-06-20,F,2.3.4.5.6,PAT002\n"
+            "Bob,Jones,1990-10-20,M,3.4.5.6.7,\n"
+        )
+        csv_file.write_text(csv_content, encoding="utf-8")
+
+        # Act
+        result = parse_csv(csv_file, seed=42)
+
+        # Assert
+        assert result.iloc[0]["patient_id_oid"] == "1.2.3.4.5"
+        assert result.iloc[1]["patient_id_oid"] == "2.3.4.5.6"
+        assert result.iloc[2]["patient_id_oid"] == "3.4.5.6.7"
+        # Verify IDs were generated/preserved correctly
+        assert result.iloc[0]["patient_id"].startswith("TEST-")
+        assert result.iloc[1]["patient_id"] == "PAT002"
+        assert result.iloc[2]["patient_id"].startswith("TEST-")
+
+    def test_parse_csv_with_seed_produces_deterministic_ids(self, tmp_path):
+        """Test that same seed produces same sequence of generated IDs."""
+        # Arrange
+        csv_file = tmp_path / "patients.csv"
+        csv_content = (
+            "first_name,last_name,dob,gender,patient_id_oid,patient_id\n"
+            "John,Doe,1980-01-15,M,1.2.3.4.5,\n"
+            "Jane,Smith,1975-06-20,F,1.2.3.4.6,\n"
+            "Bob,Jones,1990-10-20,M,1.2.3.4.7,\n"
+        )
+        csv_file.write_text(csv_content, encoding="utf-8")
+
+        # Act - parse twice with same seed
+        result1 = parse_csv(csv_file, seed=999)
+        result2 = parse_csv(csv_file, seed=999)
+
+        # Assert - generated IDs should be identical
+        assert result1.iloc[0]["patient_id"] == result2.iloc[0]["patient_id"]
+        assert result1.iloc[1]["patient_id"] == result2.iloc[1]["patient_id"]
+        assert result1.iloc[2]["patient_id"] == result2.iloc[2]["patient_id"]
+        # All should be generated (start with TEST-)
+        assert all(result1["patient_id"].str.startswith("TEST-"))
+
+    def test_parse_csv_without_patient_id_column(self, tmp_path, caplog):
+        """Test CSV without patient_id column creates it with generated IDs."""
+        # Arrange
+        csv_file = tmp_path / "patients.csv"
+        csv_content = (
+            "first_name,last_name,dob,gender,patient_id_oid\n"
+            "John,Doe,1980-01-15,M,1.2.3.4.5\n"
+            "Jane,Smith,1975-06-20,F,1.2.3.4.6\n"
+        )
+        csv_file.write_text(csv_content, encoding="utf-8")
+
+        # Act
+        with caplog.at_level(logging.INFO):
+            result = parse_csv(csv_file, seed=123)
+
+        # Assert
+        assert "patient_id" in result.columns
+        assert len(result) == 2
+        assert result.iloc[0]["patient_id"].startswith("TEST-")
+        assert result.iloc[1]["patient_id"].startswith("TEST-")
+        assert "patient_id column not found in CSV, creating with auto-generated IDs" in caplog.text
+        assert "ID generation summary: 2 generated, 0 provided" in caplog.text
+
+    def test_parse_csv_with_empty_string_patient_ids(self, tmp_path):
+        """Test that empty string patient_id values are treated as missing."""
+        # Arrange
+        csv_file = tmp_path / "patients.csv"
+        csv_content = (
+            "first_name,last_name,dob,gender,patient_id_oid,patient_id\n"
+            'John,Doe,1980-01-15,M,1.2.3.4.5,""\n'  # Empty string
+            "Jane,Smith,1975-06-20,F,1.2.3.4.6,   \n"  # Whitespace only
+        )
+        csv_file.write_text(csv_content, encoding="utf-8")
+
+        # Act
+        result = parse_csv(csv_file, seed=50)
+
+        # Assert
+        assert len(result) == 2
+        assert result.iloc[0]["patient_id"].startswith("TEST-")
+        assert result.iloc[1]["patient_id"].startswith("TEST-")
+
+    def test_parse_csv_logs_seed_usage(self, tmp_path, caplog):
+        """Test that seed usage is logged when seed is provided."""
+        # Arrange
+        csv_file = tmp_path / "patients.csv"
+        csv_content = (
+            "first_name,last_name,dob,gender,patient_id_oid,patient_id\n"
+            "John,Doe,1980-01-15,M,1.2.3.4.5,\n"
+        )
+        csv_file.write_text(csv_content, encoding="utf-8")
+        seed = 12345
+
+        # Act
+        with caplog.at_level(logging.INFO):
+            parse_csv(csv_file, seed=seed)
+
+        # Assert
+        assert f"Using seed {seed} for deterministic ID generation" in caplog.text
+
+    def test_parse_csv_generated_ids_match_format(self, tmp_path):
+        """Test that all generated IDs match the TEST-{UUID} format."""
+        # Arrange
+        csv_file = tmp_path / "patients.csv"
+        csv_content = (
+            "first_name,last_name,dob,gender,patient_id_oid,patient_id\n"
+            "John,Doe,1980-01-15,M,1.2.3.4.5,\n"
+            "Jane,Smith,1975-06-20,F,1.2.3.4.6,\n"
+            "Bob,Jones,1990-10-20,M,1.2.3.4.7,\n"
+            "Alice,Brown,1985-03-25,F,1.2.3.4.8,\n"
+            "Charlie,Wilson,1995-12-10,O,1.2.3.4.9,\n"
+        )
+        csv_file.write_text(csv_content, encoding="utf-8")
+
+        # Act
+        result = parse_csv(csv_file)
+
+        # Assert
+        import re
+        uuid_pattern = r"TEST-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+        for idx in range(len(result)):
+            patient_id = result.iloc[idx]["patient_id"]
+            assert re.match(uuid_pattern, patient_id), f"ID {patient_id} does not match format"
+            assert len(patient_id) == 41

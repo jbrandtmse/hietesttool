@@ -7,9 +7,11 @@ from CSV files for use in IHE transaction testing.
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Optional
 
 import pandas as pd
 
+from ihe_test_util.csv_parser.id_generator import generate_patient_id, reset_generated_ids
 from ihe_test_util.utils.exceptions import ValidationError
 
 
@@ -38,24 +40,35 @@ VALID_GENDERS = ["M", "F", "O", "U"]
 MIN_BIRTH_YEAR = 1900
 
 
-def parse_csv(file_path: Path) -> pd.DataFrame:
+def parse_csv(file_path: Path, seed: Optional[int] = None) -> pd.DataFrame:
     """Parse patient demographics from CSV file.
 
     Validates required columns, data formats, and returns a pandas DataFrame
     with validated patient demographics ready for IHE transaction processing.
+    Automatically generates patient IDs for rows where patient_id is missing.
 
     Args:
         file_path: Path to CSV file containing patient data
+        seed: Optional random seed for deterministic patient ID generation.
+              When provided, enables reproducible test data generation with
+              the same sequence of auto-generated IDs across runs.
 
     Returns:
         pandas DataFrame with validated patient demographics. All validation
         rules have been applied and data is ready for downstream processing.
+        Any missing patient_id values will be auto-generated in TEST-{UUID} format.
 
     Raises:
         ValidationError: If required columns missing, data invalid, or format errors
         FileNotFoundError: If CSV file does not exist
     """
     logger.info(f"Loading CSV from {file_path}")
+    
+    # Reset generated IDs tracking for this batch
+    reset_generated_ids()
+    
+    if seed is not None:
+        logger.info(f"Using seed {seed} for deterministic ID generation")
 
     # Check file exists
     if not file_path.exists():
@@ -112,6 +125,9 @@ def parse_csv(file_path: Path) -> pd.DataFrame:
             + "\n  - ".join(errors)
         )
         raise ValidationError(error_message)
+
+    # Generate patient IDs for rows with missing patient_id values
+    _generate_missing_patient_ids(df, seed)
 
     logger.info(f"Successfully parsed {len(df)} patient record(s)")
 
@@ -205,3 +221,52 @@ def _validate_gender_column(df: pd.DataFrame) -> list[str]:
             df.at[idx, "gender"] = gender_upper
 
     return errors
+
+
+def _generate_missing_patient_ids(df: pd.DataFrame, seed: Optional[int] = None) -> None:
+    """Generate patient IDs for rows with missing patient_id values.
+
+    Modifies the DataFrame in-place by filling in missing patient_id values
+    with auto-generated IDs in TEST-{UUID} format.
+
+    Args:
+        df: DataFrame to process
+        seed: Optional random seed for deterministic ID generation
+    """
+    # Check if patient_id column exists
+    if "patient_id" not in df.columns:
+        # Create the column if it doesn't exist with object dtype to hold strings
+        df["patient_id"] = pd.Series(dtype='object')
+        logger.info("patient_id column not found in CSV, creating with auto-generated IDs")
+    
+    # Ensure column is object dtype to prevent FutureWarning when assigning strings
+    if df["patient_id"].dtype != 'object':
+        df["patient_id"] = df["patient_id"].astype('object')
+
+    # Identify rows with missing patient_id values
+    missing_id_mask = df["patient_id"].isna() | (df["patient_id"].astype(str).str.strip() == "")
+    
+    generated_count = 0
+    provided_count = 0
+
+    logger.info("Starting patient ID generation for batch")
+
+    for idx in df.index:
+        row_num = idx + 2  # +2 because: +1 for header, +1 for 1-indexed
+        
+        if missing_id_mask.loc[idx]:
+            # Generate ID for this row
+            generated_id = generate_patient_id(seed=seed)
+            df.at[idx, "patient_id"] = generated_id
+            logger.info(f"Generated patient ID {generated_id} for row {row_num}")
+            generated_count += 1
+        else:
+            # Log provided ID
+            provided_id = df.at[idx, "patient_id"]
+            logger.info(f"Using provided patient ID {provided_id} for row {row_num}")
+            provided_count += 1
+
+    # Log summary
+    logger.info(
+        f"ID generation summary: {generated_count} generated, {provided_count} provided"
+    )
