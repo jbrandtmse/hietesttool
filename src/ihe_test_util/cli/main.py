@@ -3,35 +3,37 @@
 This module provides the main Click command group for the ihe-test-util CLI.
 """
 
-import logging
+from pathlib import Path
 from typing import Optional
 
 import click
 
 from ihe_test_util import __version__
 from ihe_test_util.cli.csv_commands import csv
-
-
-def configure_logging(verbose: bool) -> None:
-    """Configure logging for CLI.
-    
-    Args:
-        verbose: If True, set log level to DEBUG; otherwise INFO
-    """
-    log_level = logging.DEBUG if verbose else logging.INFO
-    log_format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    logging.basicConfig(
-        level=log_level,
-        format=log_format,
-        datefmt='%Y-%m-%d %H:%M:%S'
-    )
+from ihe_test_util.logging_audit import configure_logging
 
 
 @click.group()
 @click.version_option(version=__version__, prog_name="ihe-test-util")
 @click.option("--verbose", is_flag=True, help="Enable verbose logging (DEBUG level)")
+@click.option(
+    "--log-file",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Path to log file (default: ./logs/ihe-test-util.log)",
+)
+@click.option(
+    "--redact-pii",
+    is_flag=True,
+    help="Redact PII (patient names, SSNs) from logs",
+)
 @click.pass_context
-def cli(ctx: click.Context, verbose: bool) -> None:
+def cli(
+    ctx: click.Context,
+    verbose: bool,
+    log_file: Optional[Path],
+    redact_pii: bool,
+) -> None:
     """IHE Test Utility - Testing tool for IHE transactions.
     
     Supports PIX Add (ITI-44) and ITI-41 (Provide and Register Document Set-b)
@@ -53,9 +55,12 @@ def cli(ctx: click.Context, verbose: bool) -> None:
     # Ensure context object exists for subcommands
     ctx.ensure_object(dict)
     ctx.obj["verbose"] = verbose
+    ctx.obj["redact_pii"] = redact_pii
+    ctx.obj["log_file"] = log_file
     
-    # Configure logging based on verbose flag
-    configure_logging(verbose)
+    # Configure logging with comprehensive settings
+    log_level = "DEBUG" if verbose else "INFO"
+    configure_logging(level=log_level, log_file=log_file, redact_pii=redact_pii)
 
 
 # Register command groups

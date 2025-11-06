@@ -6,6 +6,7 @@ reproducible ID generation, and real-world usage scenarios.
 
 from pathlib import Path
 
+import pytest
 from click.testing import CliRunner
 
 from ihe_test_util.cli.main import cli
@@ -122,10 +123,16 @@ class TestCLIWorkflows:
         assert result2.exit_code == 0
         assert result3.exit_code == 0
 
-        # Assert - All outputs are identical (deterministic)
-        assert result1.output == result2.output
-        assert result2.output == result3.output
-        assert result1.output == result3.output
+        # Assert - Extract patient IDs from all runs (ignoring timestamps)
+        import re
+        ids1 = re.findall(r'TEST-[a-f0-9\-]+', result1.output)
+        ids2 = re.findall(r'TEST-[a-f0-9\-]+', result2.output)
+        ids3 = re.findall(r'TEST-[a-f0-9\-]+', result3.output)
+        
+        # All runs should produce same IDs
+        assert ids1 == ids2
+        assert ids2 == ids3
+        assert len(ids1) >= 3  # Should have at least 3 patient IDs
 
     def test_different_seeds_produce_different_ids(self, tmp_path):
         """Test that different seeds produce different patient IDs."""

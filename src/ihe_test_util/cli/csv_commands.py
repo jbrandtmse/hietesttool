@@ -63,6 +63,20 @@ def validate_csv_command(
         # Capture output to log file
         ihe-test-util csv validate patients.csv > validation.log 2>&1
     """
+    # Suppress console logging when JSON output is requested
+    root_logger = logging.getLogger()
+    console_handler = None
+    original_level = None
+    
+    if json_output:
+        # Find and disable console handler
+        for handler in root_logger.handlers:
+            if isinstance(handler, logging.StreamHandler) and not hasattr(handler, 'baseFilename'):
+                console_handler = handler
+                original_level = handler.level
+                handler.setLevel(logging.CRITICAL + 1)  # Effectively disable
+                break
+    
     try:
         logger.info(f"Validating CSV file: {file}")
         df, result = parse_csv(file, validate=True)
@@ -124,6 +138,10 @@ def validate_csv_command(
         click.secho(f"Unexpected error: {e}", fg="red", err=True)
         logger.exception("Unexpected error during CSV validation")
         sys.exit(1)
+    finally:
+        # Restore console handler if it was disabled
+        if json_output and console_handler and original_level is not None:
+            console_handler.setLevel(original_level)
 
 
 @csv.command("process")

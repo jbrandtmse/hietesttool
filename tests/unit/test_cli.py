@@ -64,14 +64,14 @@ class TestMainCLI:
         runner = CliRunner()
 
         # Act - with verbose flag
-        with patch('logging.basicConfig') as mock_config:
+        with patch('ihe_test_util.cli.main.configure_logging') as mock_config:
             result = runner.invoke(cli, ["--verbose", "csv", "--help"])
 
         # Assert
         assert result.exit_code == 0
         mock_config.assert_called_once()
         call_kwargs = mock_config.call_args[1]
-        assert call_kwargs['level'] == logging.DEBUG
+        assert call_kwargs['level'] == 'DEBUG'
 
     def test_no_verbose_flag_uses_info_logging(self):
         """Test without --verbose flag uses INFO logging."""
@@ -79,14 +79,14 @@ class TestMainCLI:
         runner = CliRunner()
 
         # Act - without verbose flag
-        with patch('logging.basicConfig') as mock_config:
+        with patch('ihe_test_util.cli.main.configure_logging') as mock_config:
             result = runner.invoke(cli, ["csv", "--help"])
 
         # Assert
         assert result.exit_code == 0
         mock_config.assert_called_once()
         call_kwargs = mock_config.call_args[1]
-        assert call_kwargs['level'] == logging.INFO
+        assert call_kwargs['level'] == 'INFO'
 
 
 class TestCSVCommands:
@@ -468,5 +468,12 @@ class TestCLIIntegration:
         assert result1.exit_code == 0
         assert result2.exit_code == 0
         # Extract patient IDs from both outputs (should be identical)
-        # This is a basic check - more detailed parsing could verify exact ID matches
-        assert result1.output == result2.output
+        # Check that patient summaries contain the same IDs (ignoring timestamps in logs)
+        import re
+        ids1 = re.findall(r'TEST-[a-f0-9\-]+', result1.output)
+        ids2 = re.findall(r'TEST-[a-f0-9\-]+', result2.output)
+        # Use sets to get unique IDs (avoid duplicates from log messages)
+        unique_ids1 = list(dict.fromkeys(ids1))  # Preserves order
+        unique_ids2 = list(dict.fromkeys(ids2))
+        assert unique_ids1 == unique_ids2
+        assert len(unique_ids1) == 2  # Should have 2 unique patient IDs

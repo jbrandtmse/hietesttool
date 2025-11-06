@@ -158,11 +158,16 @@ def test_iti41_metadata_requirements(iti41_request, sample_ccd_path):
     # Check patientId external identifier
     patient_id_found = False
     for ext_id in external_ids:
-        if "patientId" in ext_id.get("identificationScheme", ""):
-            patient_id_found = True
-            value = ext_id.get("value")
-            assert "PAT123456" in value
-    assert patient_id_found
+        # Check the Name element which contains "XDSDocumentEntry.patientId" or "XDSSubmissionSet.patientId"
+        name_elem = ext_id.find(f".//{{{rim_ns}}}Name/{{{rim_ns}}}LocalizedString")
+        if name_elem is not None:
+            name_value = name_elem.get("value", "")
+            if "patientId" in name_value:
+                patient_id_found = True
+                value = ext_id.get("value")
+                assert "PAT123456" in value
+                break
+    assert patient_id_found, "No patientId external identifier found in metadata"
     
     # Assert - Check Classifications (classCode, typeCode, formatCode)
     classifications = root.findall(f".//{{{rim_ns}}}Classification")

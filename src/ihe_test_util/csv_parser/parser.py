@@ -4,7 +4,6 @@ This module provides functionality to parse and validate patient demographics
 from CSV files for use in IHE transaction testing.
 """
 
-import logging
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -13,10 +12,11 @@ import pandas as pd
 
 from ihe_test_util.csv_parser.id_generator import generate_patient_id, reset_generated_ids
 from ihe_test_util.csv_parser.validator import validate_demographics, ValidationResult
+from ihe_test_util.logging_audit import get_logger
 from ihe_test_util.utils.exceptions import ValidationError
 
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Required CSV columns
 REQUIRED_COLUMNS = ["first_name", "last_name", "dob", "gender", "patient_id_oid"]
@@ -71,7 +71,7 @@ def parse_csv(
         ValidationError: If required columns missing, data invalid, or format errors
         FileNotFoundError: If CSV file does not exist
     """
-    logger.info(f"Loading CSV from {file_path}")
+    logger.info(f"CSV file loaded: {file_path}")
     
     # Reset generated IDs tracking for this batch
     reset_generated_ids()
@@ -91,7 +91,7 @@ def parse_csv(
             f"Failed to read CSV file {file_path}. Ensure file is valid CSV with UTF-8 encoding. Error: {e}"
         ) from e
 
-    logger.info("Validating CSV structure and data")
+    logger.info("Validation started")
 
     # Collect all validation errors
     errors: list[str] = []
@@ -138,12 +138,11 @@ def parse_csv(
     # Generate patient IDs for rows with missing patient_id values
     _generate_missing_patient_ids(df, seed)
 
-    logger.info(f"Successfully parsed {len(df)} patient record(s)")
+    logger.info(f"Validation complete: {len(df)} patients")
 
     # Run comprehensive validation if requested
     validation_result = None
     if validate:
-        logger.info("Running comprehensive validation")
         validation_result = validate_demographics(df)
 
         # Log all warnings

@@ -169,8 +169,40 @@ python -m ihe_test_util.mock_server.app --port 8080
 ### Common CLI Options
 
 - `--verbose` - Enable verbose logging (DEBUG level) for troubleshooting
+- `--log-file <path>` - Specify custom log file location (default: ./logs/ihe-test-util.log)
+- `--redact-pii` - Redact PII (patient names, SSNs) from logs for compliance
 - `--version` - Display version information
 - `--help` - Display help for any command
+
+### Logging Configuration
+
+The utility includes comprehensive logging for audit trails and troubleshooting:
+
+```bash
+# Use default logging (INFO level, logs to ./logs/ihe-test-util.log)
+ihe-test-util csv validate patients.csv
+
+# Enable verbose/debug logging for troubleshooting
+ihe-test-util --verbose csv validate patients.csv
+
+# Specify custom log file location
+ihe-test-util --log-file /var/log/ihe-test-util.log csv validate patients.csv
+
+# Enable PII redaction for compliance/sharing logs
+ihe-test-util --redact-pii csv validate patients.csv
+
+# Combine options for compliance with debug logging
+ihe-test-util --verbose --redact-pii --log-file audit.log csv validate patients.csv
+```
+
+**Log Features:**
+- **Dual output:** Console (INFO+) and file (DEBUG+)
+- **Log rotation:** Automatic rotation at 10MB, keeps 5 backup files
+- **PII redaction:** Optional redaction of patient names and SSNs
+- **Audit trail:** Structured logging for all operations with correlation IDs
+- **Environment variable:** Override default log file with `IHE_TEST_LOG_FILE`
+
+For detailed logging documentation, see [docs/logging-guide.md](docs/logging-guide.md).
 
 ### Exit Codes
 

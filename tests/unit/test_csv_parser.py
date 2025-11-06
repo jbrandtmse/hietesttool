@@ -306,56 +306,56 @@ class TestParseCSVLogging:
     """Test logging behavior."""
 
     def test_parse_csv_logs_loading_message(self, tmp_path, caplog):
-        """Test that CSV loading is logged."""
+        """Test parse_csv logs loading message."""
         # Arrange
         csv_file = tmp_path / "patients.csv"
         csv_content = (
             "first_name,last_name,dob,gender,patient_id_oid\n"
-            "John,Doe,1980-01-15,M,1.2.3.4.5\n"
+            "John,Doe,1980-01-01,M,1.2.3.4\n"
         )
-        csv_file.write_text(csv_content, encoding="utf-8")
+        csv_file.write_text(csv_content)
 
         # Act
         with caplog.at_level(logging.INFO):
-            parse_csv(csv_file)
+            df, _ = parse_csv(csv_file, validate=True)
 
         # Assert
-        assert "Loading CSV from" in caplog.text
+        assert "CSV file loaded:" in caplog.text
 
     def test_parse_csv_logs_validation_start(self, tmp_path, caplog):
-        """Test that validation start is logged."""
+        """Test parse_csv logs validation start message."""
         # Arrange
         csv_file = tmp_path / "patients.csv"
         csv_content = (
             "first_name,last_name,dob,gender,patient_id_oid\n"
-            "John,Doe,1980-01-15,M,1.2.3.4.5\n"
+            "John,Doe,1980-01-01,M,1.2.3.4\n"
         )
-        csv_file.write_text(csv_content, encoding="utf-8")
+        csv_file.write_text(csv_content)
 
         # Act
         with caplog.at_level(logging.INFO):
-            parse_csv(csv_file)
+            df, _ = parse_csv(csv_file, validate=True)
 
         # Assert
-        assert "Validating CSV structure and data" in caplog.text
+        assert "Validation started" in caplog.text
 
     def test_parse_csv_logs_success_message(self, tmp_path, caplog):
-        """Test that successful parsing is logged with record count."""
+        """Test parse_csv logs success message with patient count."""
         # Arrange
         csv_file = tmp_path / "patients.csv"
         csv_content = (
             "first_name,last_name,dob,gender,patient_id_oid\n"
-            "John,Doe,1980-01-15,M,1.2.3.4.5\n"
-            "Jane,Smith,1975-06-20,F,1.2.3.4.6\n"
+            "John,Doe,1980-01-01,M,1.2.3.4\n"
+            "Jane,Smith,1975-05-15,F,1.2.3.4\n"
         )
-        csv_file.write_text(csv_content, encoding="utf-8")
+        csv_file.write_text(csv_content)
 
         # Act
         with caplog.at_level(logging.INFO):
-            parse_csv(csv_file)
+            df, _ = parse_csv(csv_file, validate=True)
 
         # Assert
-        assert "Successfully parsed 2 patient record(s)" in caplog.text
+        assert "Validation complete: 2 patients" in caplog.text
 
     def test_parse_csv_logs_warning_for_unknown_columns(self, tmp_path, caplog):
         """Test that unknown columns generate warning log."""

@@ -4,7 +4,6 @@ This module provides detailed validation with actionable error messages,
 collecting all issues before reporting to help users fix multiple problems at once.
 """
 
-import logging
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -14,8 +13,10 @@ from typing import Optional
 
 import pandas as pd
 
+from ihe_test_util.logging_audit import get_logger
 
-logger = logging.getLogger(__name__)
+
+logger = get_logger(__name__)
 
 
 class IssueSeverity(Enum):
@@ -212,7 +213,7 @@ def validate_demographics(df: pd.DataFrame) -> ValidationResult:
     Raises:
         ValueError: If DataFrame is empty or missing required columns
     """
-    logger.info("Starting comprehensive CSV validation")
+    logger.info("Validation started")
 
     # Validate DataFrame structure
     if df.empty:
@@ -428,9 +429,9 @@ def validate_demographics(df: pd.DataFrame) -> ValidationResult:
         all_warnings=warnings,
     )
 
-    logger.info(
-        f"Validation complete: {len(errors)} errors, {len(warnings)} warnings"
-    )
+    logger.info(f"Validation errors found: {len(errors)}")
+    if warnings:
+        logger.info(f"Validation warnings: {len(warnings)}")
 
     return result
 
