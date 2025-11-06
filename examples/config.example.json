@@ -1,0 +1,120 @@
+{
+  "_comment": "IHE Test Utility Configuration Example",
+  "_comment_usage": "Copy this file to config/config.json and customize for your environment",
+  "_comment_precedence": "Configuration precedence: CLI args > Environment variables > This file > Defaults",
+  "_comment_sensitive": "NEVER store passwords or sensitive values in this file - use environment variables!",
+  
+  "endpoints": {
+    "_comment": "IHE endpoint URLs for PIX Add and ITI-41 transactions",
+    
+    "pix_add_url": "http://localhost:8080/pix/add",
+    "_comment_pix_add_url": "PIX Add endpoint URL (ITI-8 transaction). Override with IHE_TEST_PIX_ADD_URL env var",
+    
+    "iti41_url": "http://localhost:8080/iti41/submit",
+    "_comment_iti41_url": "ITI-41 endpoint URL (Provide and Register Document Set-b). Override with IHE_TEST_ITI41_URL env var"
+  },
+  
+  "certificates": {
+    "_comment": "Certificate and key paths for SAML signing and TLS client authentication",
+    
+    "cert_path": "tests/fixtures/test_cert.pem",
+    "_comment_cert_path": "Path to certificate file (relative or absolute). Supports PEM, PKCS12, DER formats. Override with IHE_TEST_CERT_PATH env var. Set to null if not using certificates.",
+    
+    "key_path": "tests/fixtures/test_key.pem",
+    "_comment_key_path": "Path to private key file. Required if cert_path is set. Override with IHE_TEST_KEY_PATH env var",
+    
+    "cert_format": "pem",
+    "_comment_cert_format": "Certificate format: 'pem', 'pkcs12', or 'der'. Default: pem. Override with IHE_TEST_CERT_FORMAT env var",
+    
+    "pkcs12_password_env_var": "IHE_TEST_PKCS12_PASSWORD",
+    "_comment_pkcs12_password_env_var": "Environment variable name containing PKCS12 password. NEVER put the actual password here!"
+  },
+  
+  "transport": {
+    "_comment": "HTTP/HTTPS transport configuration for IHE transactions",
+    
+    "verify_tls": true,
+    "_comment_verify_tls": "Whether to verify TLS certificates. Set to false for self-signed certs (NOT recommended for production). Override with IHE_TEST_VERIFY_TLS env var",
+    
+    "timeout_connect": 10,
+    "_comment_timeout_connect": "Connection timeout in seconds. Default: 10. Override with IHE_TEST_TIMEOUT_CONNECT env var",
+    
+    "timeout_read": 30,
+    "_comment_timeout_read": "Read timeout in seconds. Default: 30. Override with IHE_TEST_TIMEOUT_READ env var",
+    
+    "max_retries": 3,
+    "_comment_max_retries": "Maximum retry attempts for failed requests. Default: 3. Override with IHE_TEST_MAX_RETRIES env var",
+    
+    "backoff_factor": 1.0,
+    "_comment_backoff_factor": "Exponential backoff factor for retries (seconds). Default: 1.0. Override with IHE_TEST_BACKOFF_FACTOR env var"
+  },
+  
+  "logging": {
+    "_comment": "Logging and audit trail configuration",
+    
+    "level": "INFO",
+    "_comment_level": "Log level: DEBUG, INFO, WARNING, ERROR, or CRITICAL. Default: INFO. Override with IHE_TEST_LOG_LEVEL env var",
+    
+    "log_file": "logs/ihe-test-util.log",
+    "_comment_log_file": "Path to log file. Directory will be created if it doesn't exist. Override with IHE_TEST_LOG_FILE env var",
+    
+    "redact_pii": false,
+    "_comment_redact_pii": "Whether to redact PII (patient names, IDs) from logs. Default: false. Override with IHE_TEST_REDACT_PII env var"
+  },
+  
+  "_usage_examples": {
+    "_comment": "Configuration examples for common scenarios",
+    
+    "_example_1_local_development": {
+      "description": "Local development with mock endpoints",
+      "endpoints": {
+        "pix_add_url": "http://localhost:8080/pix/add",
+        "iti41_url": "http://localhost:8080/iti41/submit"
+      },
+      "certificates": {
+        "cert_path": null,
+        "key_path": null
+      },
+      "transport": {
+        "verify_tls": false
+      },
+      "logging": {
+        "level": "DEBUG"
+      }
+    },
+    
+    "_example_2_production": {
+      "description": "Production environment with real endpoints and certificates",
+      "endpoints": {
+        "pix_add_url": "https://pix.hospital.org/pix/add",
+        "iti41_url": "https://xds.hospital.org/iti41/submit"
+      },
+      "certificates": {
+        "cert_path": "/etc/ihe-test-util/certs/client.pem",
+        "key_path": "/etc/ihe-test-util/certs/client-key.pem",
+        "cert_format": "pem"
+      },
+      "transport": {
+        "verify_tls": true,
+        "timeout_connect": 15,
+        "timeout_read": 60
+      },
+      "logging": {
+        "level": "INFO",
+        "redact_pii": true
+      }
+    },
+    
+    "_example_3_testing": {
+      "description": "Testing environment with environment variable overrides",
+      "note": "Set IHE_TEST_PIX_ADD_URL and IHE_TEST_ITI41_URL environment variables to override endpoints",
+      "endpoints": {
+        "pix_add_url": "http://test-server:8080/pix/add",
+        "iti41_url": "http://test-server:8080/iti41/submit"
+      },
+      "logging": {
+        "level": "DEBUG"
+      }
+    }
+  }
+}

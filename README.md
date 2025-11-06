@@ -278,25 +278,124 @@ ihe-test-utility/
 
 ## Configuration
 
-Configuration is managed through:
+The IHE Test Utility supports flexible configuration through JSON files, environment variables, and command-line flags.
 
-1. **Environment variables** - `.env` file (create from `.env.example`)
-2. **Configuration files** - JSON files in `config/` directory
-3. **Command-line arguments** - Override via CLI flags
+### Configuration Precedence
+
+Configuration values are loaded with the following precedence (highest to lowest):
+
+1. **CLI Arguments** - Flags passed directly to commands (e.g., `--verbose`, `--log-file`)
+2. **Environment Variables** - `IHE_TEST_*` prefixed variables
+3. **Configuration File** - JSON file (default: `./config/config.json`)
+4. **Defaults** - Built-in default values
+
+### Quick Start
+
+1. **Copy the example configuration:**
+   ```bash
+   cp examples/config.example.json config/config.json
+   ```
+
+2. **Edit the configuration file** to match your environment:
+   ```json
+   {
+     "endpoints": {
+       "pix_add_url": "http://localhost:8080/pix/add",
+       "iti41_url": "http://localhost:8080/iti41/submit"
+     },
+     "logging": {
+       "level": "INFO",
+       "log_file": "logs/ihe-test-util.log"
+     }
+   }
+   ```
+
+3. **Use with custom configuration:**
+   ```bash
+   ihe-test-util --config config/config.json csv validate patients.csv
+   ```
+
+### Configuration Sections
+
+**Endpoints** - IHE endpoint URLs:
+- `pix_add_url` - PIX Add endpoint (ITI-8)
+- `iti41_url` - ITI-41 document submission endpoint
+
+**Certificates** - Certificate and key paths for SAML signing:
+- `cert_path` - Path to certificate file (PEM, PKCS12, or DER)
+- `key_path` - Path to private key file
+- `cert_format` - Certificate format (`pem`, `pkcs12`, or `der`)
+
+**Transport** - HTTP/HTTPS settings:
+- `verify_tls` - Whether to verify TLS certificates
+- `timeout_connect` - Connection timeout in seconds
+- `timeout_read` - Read timeout in seconds
+- `max_retries` - Maximum retry attempts
+- `backoff_factor` - Exponential backoff factor
+
+**Logging** - Logging configuration:
+- `level` - Log level (`DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`)
+- `log_file` - Path to log file
+- `redact_pii` - Whether to redact PII from logs
 
 ### Environment Variables
 
+Override configuration values using environment variables with the `IHE_TEST_` prefix:
+
 ```bash
-# Copy example configuration
+# Create .env file from example
 cp .env.example .env
 
-# Edit configuration
-# - IHE_PIX_ENDPOINT: PIX Manager endpoint URL
-# - IHE_XDS_ENDPOINT: XDS Repository endpoint URL
-# - SAML_ISSUER: SAML assertion issuer URI
-# - CERTIFICATE_PATH: Path to signing certificate
-# - PRIVATE_KEY_PATH: Path to private key
+# Set environment variables
+export IHE_TEST_PIX_ADD_URL=http://custom-server:8080/pix/add
+export IHE_TEST_LOG_LEVEL=DEBUG
+export IHE_TEST_REDACT_PII=true
 ```
+
+**Supported environment variables:**
+- `IHE_TEST_PIX_ADD_URL` - Override PIX Add endpoint
+- `IHE_TEST_ITI41_URL` - Override ITI-41 endpoint
+- `IHE_TEST_CERT_PATH` - Override certificate path
+- `IHE_TEST_KEY_PATH` - Override key path
+- `IHE_TEST_LOG_LEVEL` - Override log level
+- `IHE_TEST_LOG_FILE` - Override log file path
+- `IHE_TEST_VERIFY_TLS` - Override TLS verification
+- `IHE_TEST_REDACT_PII` - Override PII redaction
+
+### Configuration Validation
+
+Validate your configuration file before using it:
+
+```bash
+# Validate configuration file
+ihe-test-util config validate config/config.json
+
+# Output:
+# ✓ Configuration is valid
+#
+# Configuration file: config/config.json
+# 
+# Endpoints:
+#   PIX Add URL: http://localhost:8080/pix/add
+#   ITI-41 URL:  http://localhost:8080/iti41/submit
+# ...
+```
+
+### Security Best Practices
+
+⚠️ **NEVER store passwords or sensitive values in configuration files!**
+
+- Use environment variables for sensitive values (e.g., `IHE_TEST_PKCS12_PASSWORD`)
+- Never commit configuration files with credentials to Git
+- Use `.env` files for local development (add to `.gitignore`)
+
+### Detailed Documentation
+
+For comprehensive configuration documentation, see:
+- [Configuration Guide](docs/configuration-guide.md) - Complete configuration reference
+- [Configuration Examples](examples/config.example.json) - Commented example file
+- [Environment Variables](.env.example) - Environment variable reference
+- [Config Directory](config/README.md) - Configuration directory documentation
 
 ## Development
 
