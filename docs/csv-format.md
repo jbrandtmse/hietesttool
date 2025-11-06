@@ -1,671 +1,482 @@
 # CSV Format Specification
 
-This document describes the CSV file format for patient demographics used by the IHE Test Utility.
+## Introduction
 
-## Overview
+This document defines the CSV format for patient demographic data used by the IHE Test Utility. The CSV format is used to import patient records for testing IHE transactions (PIX Add, ITI-41 document submission).
 
-The CSV parser validates patient demographic data and prepares it for IHE transactions (PIX Add, ITI-41). The parser supports both required and optional fields, performs comprehensive validation, and can automatically generate patient IDs when not provided.
+**Purpose:**
+- Define patient demographics for IHE transaction testing
+- Support both manual patient IDs and auto-generated IDs
+- Enable batch processing of multiple patients
+
+**Quick Links:**
+- [Sample CSV Files](../examples/) - Example files to get started
+- [Quick Start Guide](../README.md#quick-start) - Step-by-step tutorial
+
+## CSV Format Basics
+
+The CSV file must follow these standard rules:
+
+- **Encoding:** UTF-8 without BOM (Byte Order Mark)
+- **Header Row:** First row must contain column names (case-sensitive)
+- **Line Endings:** LF (Unix-style) or CRLF (Windows-style) both accepted
+- **Field Delimiter:** Comma (`,`)
+- **Quoting:** Fields containing commas, quotes, or newlines must be enclosed in double quotes (`"`)
+- **Special Characters:** Full Unicode support for international names (accents, diacritics, etc.)
+
+**Standard CSV Format (RFC 4180):**
+```csv
+first_name,last_name,dob,gender,patient_id_oid
+John,Doe,1980-01-15,M,2.16.840.1.113883.3.9999.1
+"O'Brien, Mary",1985-06-20,F,2.16.840.1.113883.3.9999.1
+```
 
 ## Required Columns
 
-The following columns **must** be present in every CSV file:
+All CSV files must include these columns. Missing any required column will cause validation failure.
 
-| Column | Type | Format | Description | Example |
-|--------|------|--------|-------------|---------|
-| `first_name` | String | UTF-8 text | Patient's first/given name | `John` |
-| `last_name` | String | UTF-8 text | Patient's last/family name | `Doe` |
-| `dob` | Date | `YYYY-MM-DD` | Date of birth | `1980-01-15` |
-| `gender` | String | `M`, `F`, `O`, `U` | Gender (case-insensitive) | `M` |
-| `patient_id_oid` | String | OID format | Patient ID OID/domain | `1.2.3.4.5` |
+### first_name
 
-### Required Column Notes
+- **Type:** String
+- **Required:** Yes
+- **Length:** 1-100 characters
+- **Validation:** Cannot be empty
+- **Unicode:** Full Unicode support (accents, diacritics)
+- **Examples:** `John`, `José`, `François`, `Mary-Jane`
 
-- **dob**: Must be in ISO 8601 date format (`YYYY-MM-DD`). Dates before 1900 will be rejected. Future dates generate a warning but are accepted.
-- **gender**: Accepts `M` (Male), `F` (Female), `O` (Other), `U` (Unknown). Values are case-insensitive and normalized to uppercase.
-- **patient_id_oid**: Required for all patients. This OID identifies the patient ID domain and is never auto-generated.
+### last_name
+
+- **Type:** String
+- **Required:** Yes
+- **Length:** 1-100 characters
+- **Validation:** Cannot be empty
+- **Unicode:** Full Unicode support
+- **Examples:** `Doe`, `García`, `O'Brien`, `Müller`
+
+### dob
+
+- **Type:** Date
+- **Required:** Yes
+- **Format:** `YYYY-MM-DD` (ISO 8601)
+- **Validation:** Must be a valid past date (not future)
+- **Examples:** `1980-01-15`, `2010-03-15`, `1945-11-10`
+- **Common Errors:**
+  - ❌ `01/15/1980` (US format not accepted)
+  - ❌ `15-01-1980` (DD-MM-YYYY not accepted)
+  - ❌ `2030-01-15` (future date not accepted)
+  - ✅ `1980-01-15` (correct format)
+
+### gender
+
+- **Type:** String (single character)
+- **Required:** Yes
+- **Allowed Values:**
+  - `M` - Male
+  - `F` - Female
+  - `O` - Other
+  - `U` - Unknown
+- **Case:** Case-insensitive (both `M` and `m` accepted)
+- **Examples:** `M`, `F`, `O`, `U`
+- **Common Errors:**
+  - ❌ `Male` (full word not accepted)
+  - ❌ `X` (not a valid code)
+  - ✅ `M` (correct single character)
+
+### patient_id_oid
+
+- **Type:** String (OID format)
+- **Required:** Yes
+- **Format:** Numeric dotted notation (e.g., `2.16.840.1.113883.3.9999.1`)
+- **Validation:** Must be valid OID format (numbers and dots only)
+- **Purpose:** Identifies the assigning authority/organization for the patient ID
+- **Examples:** See [Common OID Values](#common-oid-values) section below
+- **Common Errors:**
+  - ❌ `12345` (not OID format)
+  - ❌ `oid:2.16.840.1.113883.3.9999.1` (no prefix)
+  - ✅ `2.16.840.1.113883.3.9999.1` (correct format)
 
 ## Optional Columns
 
-The following columns are optional and can be included for richer patient data:
+These columns are optional. If not needed, they can be omitted from the CSV file entirely or left empty.
 
-| Column | Type | Description | Example |
-|--------|------|-------------|---------|
-| `patient_id` | String | Patient identifier (auto-generated if missing) | `PAT-12345` or `TEST-{UUID}` |
-| `mrn` | String | Medical Record Number | `MRN-001` |
-| `ssn` | String | Social Security Number | `123-45-6789` |
-| `address` | String | Street address | `123 Main St, Apt 4` |
-| `city` | String | City | `San Francisco` |
-| `state` | String | State/province | `CA` |
-| `zip` | String | Postal code | `94102` |
-| `phone` | String | Phone number | `555-1234` |
-| `email` | String | Email address | `john.doe@example.com` |
+### patient_id
 
-## Patient ID Auto-Generation
+- **Type:** String
+- **Required:** No
+- **Auto-Generation:** If empty, automatically generated as `TEST-{UUID}`
+- **Purpose:** Unique patient identifier within the assigning authority
+- **Examples:** `PAT001`, `MRN-12345`, or empty for auto-generation
+- **Note:** Auto-generated IDs are reproducible when using seed parameter
 
-### Overview
+### mrn
 
-The parser can automatically generate unique patient IDs for rows where `patient_id` is missing or empty. This feature simplifies test data creation by eliminating the need to manually assign IDs.
+- **Type:** String
+- **Required:** No
+- **Purpose:** Medical Record Number
+- **Examples:** `MRN10001`, `123456789`
 
-### ID Format
+### ssn
 
-Auto-generated patient IDs follow the format:
+- **Type:** String
+- **Required:** No
+- **Format:** Typically `XXX-XX-XXXX` but flexible
+- **Validation:** Basic format check (9 digits with optional dashes)
+- **Examples:** `111-11-1111`, `123456789`
+- **Note:** Test data should use fake SSNs (e.g., `111-11-1111`)
 
-```
-TEST-{UUID}
-```
+### address
 
-Where `{UUID}` is a standard UUID v4 (36 characters: 8-4-4-4-12 hexadecimal).
+- **Type:** String
+- **Required:** No
+- **Purpose:** Street address
+- **Examples:** `123 Main Street`, `"456 Oak Ave, Apt 2B"` (quoted if contains comma)
 
-**Example:** `TEST-a1b2c3d4-e5f6-7890-abcd-ef1234567890`
+### city
 
-### When IDs Are Generated
+- **Type:** String
+- **Required:** No
+- **Examples:** `Springfield`, `Los Angeles`
 
-Patient IDs are auto-generated in the following cases:
+### state
 
-1. The `patient_id` column is missing from the CSV entirely
-2. The `patient_id` value is empty (blank cell)
-3. The `patient_id` value contains only whitespace
+- **Type:** String
+- **Required:** No
+- **Format:** 2-letter US state code (recommended but not enforced)
+- **Examples:** `IL`, `CA`, `NY`
 
-### Deterministic Generation (Seed Parameter)
+### zip
 
-The parser supports a `seed` parameter for deterministic ID generation, enabling reproducible test data:
+- **Type:** String
+- **Required:** No
+- **Format:** `XXXXX` or `XXXXX-XXXX`
+- **Examples:** `62701`, `90001-1234`
 
-```python
-from pathlib import Path
-from ihe_test_util.csv_parser.parser import parse_csv
+### phone
 
-# Generate deterministic IDs (same seed = same IDs)
-df = parse_csv(Path("patients.csv"), seed=42)
-```
+- **Type:** String
+- **Required:** No
+- **Format:** Flexible (various phone formats accepted)
+- **Examples:** `555-0100`, `(555) 123-4567`, `+1-555-123-4567`
 
-**Use Cases for Seeds:**
-- Automated testing requiring consistent patient IDs across runs
-- Generating reproducible test datasets
-- Debugging and troubleshooting with predictable data
+### email
 
-**Without a seed**, IDs are randomly generated and will differ each time the CSV is parsed.
-
-### Mixed Scenarios
-
-CSV files can contain a mix of:
-- Provided patient IDs (preserved as-is)
-- Empty patient IDs (auto-generated)
-- Missing `patient_id` column (all IDs auto-generated)
-
-**Example CSV with mixed IDs:**
-
-```csv
-first_name,last_name,dob,gender,patient_id_oid,patient_id
-John,Doe,1980-01-01,M,1.2.3.4,
-Jane,Smith,1975-05-15,F,1.2.3.4,PROVIDED-123
-Bob,Jones,1990-10-20,M,1.2.3.4,
-```
-
-**Result:**
-- Row 1 (John): Auto-generated `TEST-{UUID}`
-- Row 2 (Jane): Preserved `PROVIDED-123`
-- Row 3 (Bob): Auto-generated `TEST-{UUID}` (different from Row 1)
-
-### Important Notes
-
-- **patient_id_oid is always required**: Even when `patient_id` is auto-generated, you must provide `patient_id_oid`
-- **Uniqueness**: Generated IDs are unique within a batch (single parse operation)
-- **Logging**: All generated and provided IDs are logged for audit purposes
-
-## CSV Format Requirements
-
-### Encoding
-
-- **Required encoding**: UTF-8
-- UTF-8 special characters are fully supported (é, ñ, ü, etc.)
-
-### Delimiters
-
-- **Column delimiter**: Comma (`,`)
-- **Quote character**: Double quote (`"`) for fields containing commas or quotes
-
-### Header Row
-
-- First row must contain column names
-- Column names are case-sensitive
-- Unknown columns generate a warning but do not cause failure
-
-### Data Rows
-
-- Each row represents one patient
-- Empty optional fields are allowed
-- Missing required field values cause validation errors
-
-## Example CSV Files
-
-### Minimal Valid CSV (All Required Fields)
-
-```csv
-first_name,last_name,dob,gender,patient_id_oid
-John,Doe,1980-01-15,M,1.2.3.4.5
-Jane,Smith,1975-06-20,F,1.2.3.4.6
-```
-
-### CSV with Optional Fields
-
-```csv
-first_name,last_name,dob,gender,patient_id_oid,patient_id,mrn,email
-John,Doe,1980-01-15,M,1.2.3.4.5,PAT001,MRN001,john@example.com
-Jane,Smith,1975-06-20,F,1.2.3.4.6,PAT002,MRN002,jane@example.com
-```
-
-### CSV with Auto-Generated IDs
-
-```csv
-first_name,last_name,dob,gender,patient_id_oid,patient_id
-John,Doe,1980-01-15,M,1.2.3.4.5,
-Jane,Smith,1975-06-20,F,1.2.3.4.6,
-```
-
-**Note:** Empty `patient_id` values will be auto-generated as `TEST-{UUID}`.
-
-### CSV without patient_id Column
-
-```csv
-first_name,last_name,dob,gender,patient_id_oid
-John,Doe,1980-01-15,M,1.2.3.4.5
-Jane,Smith,1975-06-20,F,1.2.3.4.6
-```
-
-**Note:** The `patient_id` column will be created automatically with generated IDs.
-
-### CSV with UTF-8 Special Characters
-
-```csv
-first_name,last_name,dob,gender,patient_id_oid,patient_id
-José,García,1980-01-15,M,1.2.3.4.5,PAT001
-François,O'Neill,1975-06-20,F,1.2.3.4.6,PAT002
-Müller,Schmidt-Weber,1990-03-10,O,1.2.3.4.7,PAT003
-```
-
-### CSV with Commas in Fields
-
-```csv
-first_name,last_name,dob,gender,patient_id_oid,address
-John,Doe,1980-01-15,M,1.2.3.4.5,"123 Main St, Apt 4"
-Jane,Smith,1975-06-20,F,1.2.3.4.6,"456 Oak Ave, Suite 200"
-```
+- **Type:** String
+- **Required:** No
+- **Validation:** Basic email format check (contains `@` and `.`)
+- **Examples:** `john.doe@email.com`, `patient@example.org`
 
 ## Validation Rules
 
-### Date of Birth (dob)
+The CSV parser validates data according to these rules:
 
-- **Format**: `YYYY-MM-DD` (ISO 8601)
-- **Minimum year**: 1900 (earlier dates rejected)
-- **Future dates**: Warning logged but accepted
-- **Invalid format**: Error with example of correct format
+### Column Validation
 
-**Valid:** `1980-01-15`, `2024-12-31`  
-**Invalid:** `01/15/1980`, `1980-1-15`, `1850-01-01`
+- **Missing Required Columns:** Parser will fail if any required column is missing
+- **Extra Columns:** Extra columns are ignored (allows for future extensibility)
+- **Column Order:** Columns can appear in any order
 
-### Gender
+### Data Type Validation
 
-- **Valid values**: `M`, `F`, `O`, `U` (case-insensitive)
-- Automatically normalized to uppercase
-- Invalid values cause validation error
+- **Date Format:** Must be `YYYY-MM-DD`, must be valid calendar date, must be in the past
+- **Gender Codes:** Must be one of `M`, `F`, `O`, `U` (case-insensitive)
+- **OID Format:** Must match numeric dotted notation pattern
+- **Email Format:** If provided, must contain `@` and domain
 
-**Valid:** `M`, `m`, `F`, `f`, `O`, `o`, `U`, `u`  
-**Invalid:** `Male`, `X`, `1`, `Unknown`
+### Patient ID Validation
 
-### Patient ID OID
+- **Auto-Generation Trigger:** Empty `patient_id` column triggers auto-generation
+- **Whitespace Handling:** Whitespace-only values treated as empty (triggers auto-generation)
+- **Format:** Auto-generated IDs follow format `TEST-{UUID}` (e.g., `TEST-a1b2c3d4-e5f6-7890-abcd-ef1234567890`)
 
-- Always required (even when patient_id is auto-generated)
-- Typically in OID format (e.g., `1.2.3.4.5`)
-- No strict format validation (allows flexibility for different domains)
+### Error Reporting
 
-## Error Handling
+When validation fails, the parser provides:
+- Clear error message indicating which row and column failed
+- Specific validation rule that was violated
+- Suggested fix for the error
 
-### Validation Errors
+## Common OID Values
 
-The parser collects all validation errors and reports them together:
+OIDs (Object Identifiers) identify healthcare organizations and assigning authorities. Use these test OIDs for development and testing.
 
-```
-Found 3 validation error(s) in CSV:
-  - Row 2: Missing required field 'dob'. Expected format: YYYY-MM-DD
-  - Row 3: Invalid gender 'X'. Must be one of: M, F, O, U (case-insensitive)
-  - Row 4: Invalid date format '01/15/1980'. Expected format: YYYY-MM-DD (e.g., 1980-01-15)
-```
+### Test OIDs (For Development)
 
-### File Errors
+| OID | Description | Use Case |
+|-----|-------------|----------|
+| `2.16.840.1.113883.3.9999.1` | Generic Test Organization A | General testing |
+| `2.16.840.1.113883.3.9999.10` | Test Hospital A | Multi-facility testing |
+| `2.16.840.1.113883.3.9999.20` | Test Clinic B | Multi-facility testing |
 
-- **File not found**: Clear error message with file path
-- **Invalid CSV format**: Error with encoding/format details
-- **Missing required columns**: List of missing columns with required columns reference
+### Real-World OID Examples
 
-## Usage Example
+| OID Prefix | Description |
+|------------|-------------|
+| `2.16.840.1.113883.4.1` | US Social Security Number |
+| `2.16.840.1.113883.4.6` | US National Provider Identifier (NPI) |
+| `1.2.840.114350.1.13.x.x.x` | Epic Systems patient identifiers |
 
-```python
-from pathlib import Path
-from ihe_test_util.csv_parser.parser import parse_csv
+### OID Resources
 
-# Parse CSV with auto-generated IDs (random)
-df = parse_csv(Path("patients.csv"))
+- **OID Registry:** [HL7 OID Registry](https://www.hl7.org/oid/index.cfm)
+- **OID Format Spec:** Numeric dotted notation (e.g., `2.16.840.1.113883.3.9999.1`)
+- **Custom OIDs:** For testing, use OIDs under `2.16.840.1.113883.3.9999.x`
 
-# Parse CSV with deterministic IDs (reproducible)
-df = parse_csv(Path("patients.csv"), seed=42)
+## Examples
 
-# Access data
-for idx, row in df.iterrows():
-    patient_id = row["patient_id"]  # Either provided or auto-generated
-    patient_id_oid = row["patient_id_oid"]  # Always present
-    first_name = row["first_name"]
-    # ... process patient data
-```
+### Minimal Example (Required Columns Only)
 
-## Logging
+File: `examples/patients_minimal.csv`
 
-The parser logs comprehensive information:
-
-- **INFO**: CSV loading, validation start, successful parsing, ID generation summary
-- **WARNING**: Unknown columns, future dates of birth
-- **ERROR**: Validation failures, file not found
-
-**ID Generation Logging Example:**
-
-```
-INFO: Loading CSV from patients.csv
-INFO: Using seed 42 for deterministic ID generation
-INFO: Validating CSV structure and data
-INFO: Starting patient ID generation for batch
-INFO: Generated patient ID TEST-a1b2c3d4-e5f6-7890-abcd-ef1234567890 for row 2
-INFO: Using provided patient ID PAT001 for row 3
-INFO: Generated patient ID TEST-b2c3d4e5-f6a7-8901-bcde-f12345678901 for row 4
-INFO: ID generation summary: 2 generated, 1 provided
-INFO: Successfully parsed 3 patient record(s)
+```csv
+first_name,last_name,dob,gender,patient_id_oid
+John,Doe,1980-01-15,M,2.16.840.1.113883.3.9999.1
+Jane,Smith,1975-06-20,F,2.16.840.1.113883.3.9999.1
+Robert,Johnson,1990-03-10,M,2.16.840.1.113883.3.9999.1
 ```
 
-## Best Practices
+**Note:** All `patient_id` values are empty, so all will be auto-generated.
 
-1. **Always include all required columns** even if some values will be auto-generated
-2. **Use UTF-8 encoding** to support international characters
-3. **Use consistent date format** (YYYY-MM-DD) throughout your CSV
-4. **Provide patient_id_oid** for all patients (never leave empty)
-5. **Use seeds for testing** when you need reproducible test data
-6. **Quote fields with commas** to avoid parsing issues
-7. **Review parser logs** for warnings about data quality issues
+### Comprehensive Example (All Columns)
+
+File: `examples/patients_sample.csv`
+
+```csv
+first_name,last_name,dob,gender,patient_id_oid,patient_id,mrn,ssn,address,city,state,zip,phone,email
+José,García,2010-03-15,M,2.16.840.1.113883.3.9999.1,PAT001,MRN10001,111-11-1111,123 Main Street,Springfield,IL,62701,555-0100,jose.garcia@email.com
+Mary-Jane,O'Brien,1985-06-20,F,2.16.840.1.113883.3.9999.10,PAT002,MRN10002,222-22-2222,456 Oak Avenue,Chicago,IL,60601,555-0101,maryj.obrien@email.com
+```
+
+**Features demonstrated:**
+- UTF-8 special characters (José, Mary-Jane)
+- Mix of provided patient IDs and empty IDs
+- Complete addresses and partial addresses
+- Various demographic data
 
 ## Troubleshooting
 
-### "Missing required columns" Error
+### Common CSV Errors
 
-**Cause:** CSV is missing one or more required columns.  
-**Solution:** Ensure your CSV has: `first_name`, `last_name`, `dob`, `gender`, `patient_id_oid`
+#### Missing Required Column
 
-### "Invalid date format" Error
+**Error:** `Missing required column: dob`
 
-**Cause:** Date is not in YYYY-MM-DD format.  
-**Solution:** Convert dates to ISO format (e.g., `1980-01-15` not `01/15/1980`)
+**Cause:** CSV file does not include a required column
 
-### "Invalid gender" Error
+**Fix:** Add the missing column to your CSV header row
 
-**Cause:** Gender value is not M, F, O, or U.  
-**Solution:** Use only valid gender codes (case-insensitive)
+#### Invalid Date Format
 
-### All Patient IDs Are Generated
+**Error:** `Invalid date format for dob: '01/15/1980'. Expected YYYY-MM-DD`
 
-**Cause:** `patient_id` column missing or all values empty.  
-**Solution:** This is expected behavior. If you want to provide IDs, add non-empty values to the `patient_id` column.
+**Cause:** Date is in US format (MM/DD/YYYY) instead of ISO format
 
-### Generated IDs Differ Between Runs
+**Fix:** Change date format to `1980-01-15`
 
-**Cause:** No seed parameter provided to parser.  
-**Solution:** Use `parse_csv(file_path, seed=42)` for deterministic generation.
+#### Invalid Gender Value
 
-## Comprehensive Validation
+**Error:** `Invalid gender value: 'Male'. Must be M, F, O, or U`
 
-### Overview
+**Cause:** Gender column contains full word instead of single character code
 
-The CSV parser performs comprehensive validation to ensure data quality before processing IHE transactions. Validation includes:
+**Fix:** Use `M` instead of `Male`
 
-- **Field-level validation**: Phone, email, SSN, ZIP code formats
-- **Date validation**: Future dates of birth, unreasonable ages
-- **Batch-level validation**: Duplicate patient IDs, duplicate names
-- **Error collection**: All issues collected before reporting (not fail-fast)
+#### Future Date of Birth
 
-### Validation Severity Levels
+**Error:** `Date of birth cannot be in the future: '2030-01-15'`
 
-**ERRORS** (Red) - Block processing:
-- Duplicate patient IDs across rows
-- Missing required fields or values
-- Invalid required field formats
+**Cause:** Date of birth is set to a future date
 
-**WARNINGS** (Yellow) - Allow processing:
-- Invalid optional field formats (phone, email, SSN, ZIP)
-- Future dates of birth
-- Unreasonable ages (< 0 or > 120 years)
-- Duplicate names (may be legitimate)
+**Fix:** Use a past date (e.g., `1990-01-15`)
 
-### Running Validation
+#### Invalid OID Format
 
-```bash
-# Validate CSV file (shows report in terminal)
-ihe-test-util csv validate patients.csv
+**Error:** `Invalid OID format: '12345'. Must be numeric dotted notation`
 
-# Export invalid rows to separate CSV
-ihe-test-util csv validate patients.csv --export-errors errors.csv
+**Cause:** OID is not in proper format
 
-# Get machine-readable JSON output
-ihe-test-util csv validate patients.csv --json
-```
+**Fix:** Use proper OID format like `2.16.840.1.113883.3.9999.1`
 
-### Exit Codes
+### CSV Encoding Issues
 
-- **Exit code 0**: Validation passed (warnings are OK for CI/CD)
-- **Exit code 1**: Validation errors exist (blocks CI/CD)
+#### BOM (Byte Order Mark) Issues
 
-### Validation Report Format
+**Symptom:** First column name not recognized, validation fails on first row
 
-```
-CSV Validation Report
-Total Rows: 100
-Valid Rows: 95
-Rows with Errors: 3
-Rows with Warnings: 7
+**Cause:** CSV file saved with UTF-8 BOM marker
 
-ERRORS (3):
-  Row 5, Column 'patient_id': Duplicate patient_id found: TEST-001
-    → Suggestion: Ensure all patient IDs are unique or leave empty for auto-generation
-  
-  Row 12, Column 'patient_id': Duplicate patient_id found: TEST-001
-    → Suggestion: Ensure all patient IDs are unique or leave empty for auto-generation
+**Fix:**
+- **Excel:** Save As → Tools → Web Options → Encoding → Unicode (UTF-8) without BOM
+- **Notepad++:** Encoding → Convert to UTF-8 without BOM
+- **VS Code:** Click encoding in status bar → Save with Encoding → UTF-8
 
-WARNINGS (7):
-  Row 3, Column 'phone': Phone format may be invalid: 555-1234
-    → Suggestion: Recommended formats: 555-555-1234 or (555) 555-1234
-  
-  Row 8, Column 'email': Email format appears invalid: user@domain
-    → Suggestion: Ensure email has format: user@domain.com
+#### Non-UTF-8 Encoding
 
-Duplicate Patient IDs: TEST-001 (found in 2 rows)
-```
+**Symptom:** Special characters appear garbled (� or ?)
 
-## Field Validation Reference
+**Cause:** CSV file saved with wrong encoding (e.g., Windows-1252, ISO-8859-1)
 
-### Phone Number Validation (WARNING)
+**Fix:** Re-save file with UTF-8 encoding
 
-**Valid Formats:**
-- `555-555-1234` (dashes)
-- `(555) 555-1234` (parentheses and space)
+### Special Character Handling
 
-**Invalid Formats (generate warnings):**
-- `5551234` (no formatting)
-- `555-1234` (missing area code)
-- `1-555-555-1234` (country code)
-- `555.555.1234` (dots instead of dashes)
+#### Commas in Fields
 
-**Example Warning:**
-```
-Row 5, Column 'phone': Phone format may be invalid: 555-1234
-→ Suggestion: Recommended formats: 555-555-1234 or (555) 555-1234
-```
+**Problem:** Address like `"123 Main St, Apt 2B"` breaks CSV parsing
 
-**Fix:** Update phone to match one of the recommended formats or leave empty.
-
-### Email Validation (WARNING)
-
-**Valid Formats:**
-- `user@example.com`
-- `first.last@company.org`
-- `user+tag@domain.co.uk`
-
-**Invalid Formats (generate warnings):**
-- `user@domain` (missing TLD)
-- `user.domain.com` (missing @)
-- `@domain.com` (missing local part)
-- `user@` (missing domain)
-
-**Example Warning:**
-```
-Row 8, Column 'email': Email format appears invalid: user@domain
-→ Suggestion: Ensure email has format: user@domain.com
-```
-
-**Fix:** Ensure email includes `@` and valid domain with TLD (e.g., `.com`, `.org`).
-
-### SSN Validation (WARNING)
-
-**Valid Format:**
-- `123-45-6789` (with dashes)
-
-**Invalid Formats (generate warnings):**
-- `123456789` (no dashes)
-- `123-456-789` (wrong segment lengths)
-- `12-34-5678` (wrong segment lengths)
-
-**Example Warning:**
-```
-Row 10, Column 'ssn': SSN format invalid: 123456789
-→ Suggestion: Use format: 123-45-6789
-```
-
-**Fix:** Format SSN as XXX-XX-XXXX or leave empty (SSN is optional).
-
-### ZIP Code Validation (WARNING)
-
-**Valid Formats:**
-- `12345` (5-digit)
-- `12345-6789` (ZIP+4)
-
-**Invalid Formats (generate warnings):**
-- `1234` (too short)
-- `123456` (too long without dash)
-- `12345-67` (incomplete ZIP+4)
-
-**Example Warning:**
-```
-Row 15, Column 'zip': ZIP code format invalid: 1234
-→ Suggestion: Use format: 12345 or 12345-6789
-```
-
-**Fix:** Use 5-digit or 9-digit (ZIP+4) format.
-
-### Date of Birth Validation (WARNING)
-
-**Future Date Detection:**
-
-```
-Row 3, Column 'dob': Future date of birth: 2030-01-01
-→ Suggestion: Verify date is correct (YYYY-MM-DD format)
-```
-
-**Fix:** Verify the date is correct. Future dates are accepted but flagged as likely errors.
-
-**Unreasonable Age Detection:**
-
-```
-Row 7, Column 'dob': Unreasonable age detected: -5 years (dob: 2030-01-01)
-→ Suggestion: Verify date of birth is correct
-```
-
-```
-Row 12, Column 'dob': Unreasonable age detected: 150 years (dob: 1870-01-01)
-→ Suggestion: Verify date of birth is correct (person would be > 120 years old)
-```
-
-**Fix:** Verify the date is correct. Ages < 0 or > 120 years are flagged.
-
-### Duplicate Patient IDs (ERROR)
-
-**Detection:**
-Duplicate `patient_id` values across different rows cause validation errors.
-
-**Example Error:**
-```
-Row 5, Column 'patient_id': Duplicate patient_id found: TEST-001
-→ Suggestion: Ensure all patient IDs are unique or leave empty for auto-generation
-
-Row 12, Column 'patient_id': Duplicate patient_id found: TEST-001
-→ Suggestion: Ensure all patient IDs are unique or leave empty for auto-generation
-```
-
-**Fix Options:**
-1. Make patient IDs unique: Change one or both IDs to unique values
-2. Use auto-generation: Leave `patient_id` empty to auto-generate unique IDs
-3. Remove duplicate: If truly duplicate data, remove one row
-
-### Duplicate Names (WARNING)
-
-**Detection:**
-Duplicate combinations of `first_name` and `last_name` generate warnings.
-
-**Example Warning:**
-```
-Row 8, Column 'first_name': Duplicate name found: John Doe
-→ Suggestion: Verify this is intentional (legitimate duplicates are OK)
-```
-
-**Note:** Duplicate names may be legitimate (siblings, common names) so this is a warning, not an error.
-
-## Error CSV Export Feature
-
-### Overview
-
-When validation errors exist, you can export invalid rows to a separate CSV file for review and correction.
-
-### Usage
-
-```bash
-ihe-test-util csv validate patients.csv --export-errors errors.csv
-```
-
-### Error CSV Format
-
-The exported CSV includes:
-- All original columns from the input CSV
-- Additional `error_description` column with concatenated error messages
-
-**Example Error CSV:**
-
+**Fix:** Enclose field in double quotes:
 ```csv
-patient_id,patient_id_oid,first_name,last_name,dob,gender,error_description
-TEST-001,1.2.3.4,John,Doe,1980-01-01,M,"patient_id: Duplicate patient_id found: TEST-001"
-TEST-001,1.2.3.4,Jane,Smith,1990-02-15,F,"patient_id: Duplicate patient_id found: TEST-001"
+address
+"123 Main St, Apt 2B"
 ```
 
-### Workflow
+#### Quotes in Fields
 
-1. Run validation and export errors:
-   ```bash
-   ihe-test-util csv validate patients.csv --export-errors errors.csv
-   ```
+**Problem:** Name like `John "Johnny" Doe` breaks CSV parsing
 
-2. Review `errors.csv` to see which rows have issues
-
-3. Fix the issues in the original `patients.csv` file
-
-4. Re-run validation to confirm fixes:
-   ```bash
-   ihe-test-util csv validate patients.csv
-   ```
-
-### Notes
-
-- Only rows with **ERRORS** are exported (warnings are not included)
-- The `error_description` column contains all errors for that row, separated by semicolons if multiple
-- Original data is preserved to help identify and fix issues
-
-## JSON Output Format
-
-For machine-readable output (CI/CD integration), use the `--json` flag:
-
-```bash
-ihe-test-util csv validate patients.csv --json
+**Fix:** Escape quotes by doubling them and enclosing in quotes:
+```csv
+first_name
+"John ""Johnny"" Doe"
 ```
 
-**Example JSON Output:**
+#### Line Breaks in Fields
 
-```json
-{
-  "total_rows": 100,
-  "valid_rows": 95,
-  "error_rows": 3,
-  "warning_rows": 7,
-  "duplicate_patient_ids": ["TEST-001"],
-  "missing_oids_count": 0,
-  "errors": [
-    {
-      "row_number": 5,
-      "column_name": "patient_id",
-      "severity": "error",
-      "message": "Duplicate patient_id found: TEST-001",
-      "suggestion": "Ensure all patient IDs are unique or leave empty for auto-generation"
-    }
-  ],
-  "warnings": [
-    {
-      "row_number": 3,
-      "column_name": "phone",
-      "severity": "warning",
-      "message": "Phone format may be invalid: 555-1234",
-      "suggestion": "Recommended formats: 555-555-1234 or (555) 555-1234"
-    }
-  ]
-}
+**Problem:** Multi-line address breaks CSV parsing
+
+**Fix:** Enclose field in double quotes:
+```csv
+address
+"123 Main St
+Apt 2B"
 ```
 
-## Troubleshooting Validation Issues
+### Patient ID Generation Not Triggering
 
-### Common Validation Errors
+**Symptom:** Expected auto-generation but patient_id stays empty
 
-#### All Patient IDs Are Duplicates
+**Cause:** Cell contains whitespace instead of being truly empty
 
-**Symptom:** Every row shows duplicate patient_id error.
+**Fix:** Ensure cells are completely empty (no spaces, no tabs)
 
-**Cause:** Same patient_id used for multiple rows.
+### Date Format Confusion
 
-**Solution:**
-1. Make each patient_id unique: `TEST-001`, `TEST-002`, `TEST-003`, etc.
-2. Or leave patient_id empty to use auto-generation
+**Common Issue:** Different regions use different date formats
 
-#### Validation Errors After Fixing Issues
+**Examples:**
+- US Format: `01/15/1980` (MM/DD/YYYY) ❌
+- European: `15/01/1980` (DD/MM/YYYY) ❌
+- ISO Format: `1980-01-15` (YYYY-MM-DD) ✅
 
-**Symptom:** Fixed data but validation still fails.
+**Fix:** Always use ISO 8601 format: `YYYY-MM-DD`
 
-**Cause:** Row numbers in error messages are 1-indexed (include header row).
+## CSV Creation Tips
 
-**Solution:** Row 5 in error message = data row 4 (header is row 1).
+### Recommended Tools
 
-#### CSV Shows "Valid" But Has Warnings
+#### Excel (Microsoft Office)
 
-**Symptom:** Validation passes (exit code 0) but warnings displayed.
+**Creating CSV:**
+1. Create data in Excel spreadsheet
+2. File → Save As
+3. Choose "CSV UTF-8 (Comma delimited) (*.csv)"
+4. ⚠️ **Important:** Regular "CSV (Comma delimited)" may not preserve UTF-8
 
-**Cause:** Warnings don't block processing, only errors do.
+**Avoiding Issues:**
+- Use "CSV UTF-8" option, not regular "CSV"
+- Excel may add BOM marker - verify with text editor if issues occur
+- Test CSV after saving to ensure encoding is correct
 
-**Solution:** Review warnings and fix if needed, but processing can continue.
+#### Google Sheets
 
-### Validation FAQ
+**Creating CSV:**
+1. Create data in Google Sheets
+2. File → Download → Comma Separated Values (.csv)
+3. Google Sheets exports as UTF-8 by default
 
-**Q: Do warnings cause validation to fail?**  
-A: No. Only errors cause failure (exit code 1). Warnings are informational and don't block processing.
+**Advantages:**
+- Automatically handles UTF-8 encoding
+- No BOM issues
+- Good for collaboration
 
-**Q: Can I disable validation?**  
-A: In code, yes: `parse_csv(file_path, validate=False)`. The CLI always validates.
+#### LibreOffice Calc
 
-**Q: Why is my phone number invalid?**  
-A: Phone validation expects `555-555-1234` or `(555) 555-1234`. Other formats generate warnings.
+**Creating CSV:**
+1. Create data in Calc
+2. File → Save As
+3. File Type: "Text CSV (.csv)"
+4. In dialog: Character set = "Unicode (UTF-8)", Field delimiter = ","
 
-**Q: Can duplicate names cause errors?**  
-A: No. Duplicate names generate warnings only, as they may be legitimate (siblings, common names).
+**Advantages:**
+- Free and open source
+- Explicit encoding control
+- No hidden formatting issues
 
-**Q: What if I have legitimate duplicate patient IDs?**  
-A: Patient IDs must be unique within a batch. Use different IDs or different patient_id_oid domains.
+#### Text Editors (VS Code, Notepad++, Sublime)
 
-**Q: How do I fix "unreasonable age" warnings?**  
-A: Verify the date of birth is correct. Ages < 0 or > 120 years are flagged but accepted.
+**Advantages:**
+- Complete control over encoding
+- Can verify exact file contents
+- Good for troubleshooting
 
-**Q: Can I see only errors, not warnings?**  
-A: Use `--export-errors` to export only rows with errors. Or parse JSON output and filter by severity.
+**Creating CSV:**
+1. Create text file with `.csv` extension
+2. Set encoding to UTF-8
+3. Format data following CSV rules
+4. Save
 
-**Q: Does validation check for invalid dates like Feb 30?**  
-A: Yes, pandas date parsing rejects invalid calendar dates automatically.
+### Best Practices
+
+#### Data Entry
+
+- **Use consistent date format:** Always `YYYY-MM-DD`
+- **Use gender codes:** `M`, `F`, `O`, `U` (not full words)
+- **Test OIDs:** Use `2.16.840.1.113883.3.9999.x` prefix for testing
+- **Fake data:** Use obviously fake data (names like "John Doe", SSNs like "111-11-1111")
+
+#### File Management
+
+- **UTF-8 encoding:** Always save as UTF-8 without BOM
+- **Version control:** Keep CSV files in version control (Git)
+- **Backup:** Keep backup copies before bulk edits
+- **Validation:** Run `ihe-test-util csv validate` after creating/editing
+
+#### Testing Workflow
+
+1. **Create CSV:** Use recommended tool with UTF-8 encoding
+2. **Validate:** Run `ihe-test-util csv validate your-file.csv`
+3. **Fix errors:** Address any validation errors reported
+4. **Process:** Run `ihe-test-util csv process your-file.csv`
+5. **Verify:** Check that patient IDs generated correctly
+
+### Avoiding Common Spreadsheet Issues
+
+#### Auto-Formatting Problems
+
+**Problem:** Excel converts data automatically (e.g., `123-45-6789` becomes date)
+
+**Fix:** 
+- Format cells as "Text" before entering data
+- Prefix with single quote: `'123-45-6789`
+- Use CSV UTF-8 export option
+
+#### Leading Zeros Removed
+
+**Problem:** ZIP code `01234` becomes `1234`
+
+**Fix:**
+- Format cell as Text
+- In Excel: Custom format `00000` for ZIP codes
+
+#### Date Auto-Conversion
+
+**Problem:** `2010-03-15` displayed as `3/15/2010` or converted to serial number
+
+**Fix:**
+- Format cell as Text before entering
+- Verify in text editor after saving CSV that format is `YYYY-MM-DD`
 
 ## See Also
 
-- [Architecture Documentation](architecture.md) - Overall system architecture
-- [PRD](prd.md) - Product requirements and specifications
-- [Test Strategy](architecture/test-strategy-and-standards.md) - Testing approach and standards
+- [Quick Start Guide](../README.md#quick-start) - Step-by-step tutorial
+- [Sample CSV Files](../examples/) - Example files
+- [CSV Parser Documentation](../README.md#csv-validation) - CLI command reference

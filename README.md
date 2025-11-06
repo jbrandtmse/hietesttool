@@ -83,6 +83,55 @@ python -c "from ihe_test_util import __version__; print(__version__)"
 
 ## Quick Start
 
+### Your First CSV Processing Tutorial
+
+Follow these steps to validate and process the sample CSV file included with the utility:
+
+**Step 1: Copy the sample CSV to your working directory**
+
+```bash
+# The sample file is already included in the examples/ directory
+# You can use it directly or copy it to your current directory
+cp examples/patients_sample.csv ./my-patients.csv
+```
+
+**Step 2: Validate the CSV file**
+
+```bash
+# Validate the sample CSV - this checks for proper format and data
+ihe-test-util csv validate examples/patients_sample.csv
+
+# Expected output:
+# ✓ Validation complete: 10 valid rows, 0 invalid rows
+# All patient records passed validation
+```
+
+**Step 3: Process the CSV file**
+
+```bash
+# Process the CSV to parse patient demographics
+ihe-test-util csv process examples/patients_sample.csv
+
+# Expected output shows:
+# - Patient names and demographics
+# - Auto-generated patient IDs for records with empty patient_id
+# - Parsed data ready for IHE transactions
+```
+
+**Step 4: Review the output**
+
+The output displays:
+- All 10 patient records parsed successfully
+- Auto-generated IDs in format `TEST-{UUID}` for 5 patients (those with empty patient_id)
+- Complete demographic information for each patient
+- UTF-8 special characters handled correctly (José, François, Mary-Jane, etc.)
+
+**Next Steps:**
+
+- Try the minimal example: `ihe-test-util csv validate examples/patients_minimal.csv`
+- Create your own CSV following the format in [CSV Format Guide](docs/csv-format.md)
+- See all sample files in the [examples/](examples/) directory
+
 ### Getting Started with the CLI
 
 After installation, the `ihe-test-util` command is available system-wide:
