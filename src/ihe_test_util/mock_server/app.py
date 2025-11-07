@@ -257,14 +257,12 @@ def initialize_app(config: MockServerConfig) -> None:
     except ImportError:
         logger.warning("PIX Add endpoint not available (Story 2.2)")
 
-    # ITI-41 endpoint registration temporarily disabled for Story 2.2
-    # Will be enabled in Story 2.3
-    # try:
-    #     from .iti41_endpoint import register_iti41_endpoint
-    #     register_iti41_endpoint(app)
-    #     logger.info(f"Registered ITI-41 endpoint: {config.iti41_endpoint}")
-    # except ImportError:
-    #     logger.warning("ITI-41 endpoint not available (Story 2.3)")
+    try:
+        from .iti41_endpoint import register_iti41_endpoint
+        register_iti41_endpoint(app, config)
+        logger.info(f"Registered ITI-41 endpoint: {config.iti41_endpoint}")
+    except ImportError:
+        logger.warning("ITI-41 endpoint not available (Story 2.3)")
 
     # Create required directories
     Path("mocks/data").mkdir(parents=True, exist_ok=True)
