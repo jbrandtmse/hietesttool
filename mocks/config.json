@@ -1,0 +1,11 @@
+{
+  "host": "0.0.0.0",
+  "http_port": 8080,
+  "https_port": 8443,
+  "cert_path": "mocks/cert.pem",
+  "key_path": "mocks/key.pem",
+  "log_level": "INFO",
+  "log_path": "mocks/logs/mock-server.log",
+  "pix_add_endpoint": "/pix/add",
+  "iti41_endpoint": "/iti41/submit"
+}

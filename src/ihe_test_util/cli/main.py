@@ -10,6 +10,7 @@ import click
 
 from ihe_test_util import __version__
 from ihe_test_util.cli.csv_commands import csv
+from ihe_test_util.cli.mock_commands import mock_group
 from ihe_test_util.config import load_config
 from ihe_test_util.logging_audit import configure_logging
 from ihe_test_util.utils.exceptions import ConfigurationError
@@ -92,6 +93,7 @@ def cli(
 
 # Register command groups
 cli.add_command(csv)
+cli.add_command(mock_group)
 
 
 @cli.group()
