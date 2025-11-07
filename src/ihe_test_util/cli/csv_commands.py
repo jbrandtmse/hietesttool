@@ -63,12 +63,9 @@ def validate_csv_command(
         # Capture output to log file
         ihe-test-util csv validate patients.csv > validation.log 2>&1
     """
-    # Suppress console logging when JSON output is requested
-    original_logging_level = None
-    
     if json_output:
-        # Completely disable all logging output when JSON is requested
-        original_logging_level = logging.root.level
+        # For JSON output, suppress ALL logging by disabling at the highest level
+        # This must happen before any code that might trigger logging
         logging.disable(logging.CRITICAL)
     
     try:
@@ -134,8 +131,8 @@ def validate_csv_command(
         logger.exception("Unexpected error during CSV validation")
         sys.exit(1)
     finally:
-        # Restore logging if it was disabled
-        if json_output and original_logging_level is not None:
+        # Restore logging if it was disabled for JSON output
+        if json_output:
             logging.disable(logging.NOTSET)
 
 
