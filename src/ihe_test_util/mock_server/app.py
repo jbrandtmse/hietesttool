@@ -250,20 +250,21 @@ def initialize_app(config: MockServerConfig) -> None:
     # Setup graceful shutdown
     setup_graceful_shutdown()
 
-    # Register endpoint blueprints (will be implemented in future stories)
+    # Register endpoint blueprints
     try:
         from .pix_add_endpoint import register_pix_add_endpoint
-        register_pix_add_endpoint(app)
-        logger.info(f"Registered PIX Add endpoint: {config.pix_add_endpoint}")
+        register_pix_add_endpoint(app, config)
     except ImportError:
         logger.warning("PIX Add endpoint not available (Story 2.2)")
 
-    try:
-        from .iti41_endpoint import register_iti41_endpoint
-        register_iti41_endpoint(app)
-        logger.info(f"Registered ITI-41 endpoint: {config.iti41_endpoint}")
-    except ImportError:
-        logger.warning("ITI-41 endpoint not available (Story 2.3)")
+    # ITI-41 endpoint registration temporarily disabled for Story 2.2
+    # Will be enabled in Story 2.3
+    # try:
+    #     from .iti41_endpoint import register_iti41_endpoint
+    #     register_iti41_endpoint(app)
+    #     logger.info(f"Registered ITI-41 endpoint: {config.iti41_endpoint}")
+    # except ImportError:
+    #     logger.warning("ITI-41 endpoint not available (Story 2.3)")
 
     # Create required directories
     Path("mocks/data").mkdir(parents=True, exist_ok=True)

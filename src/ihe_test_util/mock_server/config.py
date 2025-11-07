@@ -25,6 +25,7 @@ class MockServerConfig(BaseModel):
     log_path: str = Field(default="mocks/logs/mock-server.log", description="Log file path")
     pix_add_endpoint: str = Field(default="/pix/add", description="PIX Add endpoint path")
     iti41_endpoint: str = Field(default="/iti41/submit", description="ITI-41 endpoint path")
+    response_delay_ms: int = Field(default=0, ge=0, le=5000, description="Response delay simulation in milliseconds")
 
     @field_validator("log_level")
     @classmethod

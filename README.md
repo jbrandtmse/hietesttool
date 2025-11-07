@@ -207,12 +207,185 @@ Jane,Smith,1975-05-15,F,1.2.3.4,TEST-002
 
 ### Running Mock IHE Endpoints
 
-```bash
-# Start mock server on default port 5000
-python -m ihe_test_util.mock_server.app
+The IHE Test Utility includes built-in Flask-based mock servers for PIX Add and ITI-41 endpoints, enabling local testing without external dependencies.
 
-# Or use custom port
-python -m ihe_test_util.mock_server.app --port 8080
+#### Starting the Mock Server
+
+```bash
+# Generate self-signed certificate for HTTPS (first time only)
+bash scripts/generate_cert.sh
+
+# Start HTTP mock server (default port 8080)
+ihe-test-util mock start
+
+# Start HTTPS mock server
+ihe-test-util mock start --https
+
+# Start on custom port
+ihe-test-util mock start --port 9090
+
+# Start with custom config
+ihe-test-util mock start --config path/to/custom-config.json
+```
+
+#### Testing Mock Endpoints with cURL
+
+**1. Check Server Health:**
+```bash
+curl -X GET http://localhost:8080/health
+```
+
+Expected response includes server status, version, protocol, port, and available endpoints.
+
+**2. Test PIX Add Endpoint (Patient Registration):**
+
+Send a valid HL7v3 PRPA_IN201301UV02 message:
+
+```bash
+curl -X POST http://localhost:8080/pix/add \
+  -H "Content-Type: text/xml; charset=utf-8" \
+  -d '<?xml version="1.0" encoding="UTF-8"?>
+<SOAP-ENV:Envelope xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP-ENV:Body>
+    <PRPA_IN201301UV02 xmlns="urn:hl7-org:v3" ITSVersion="XML_1.0">
+      <id root="1.2.3.4.5" extension="MSG-12345"/>
+      <creationTime value="20250106150000"/>
+      <controlActProcess>
+        <subject>
+          <registrationEvent>
+            <subject1>
+              <patient>
+                <id root="1.2.840.114350" extension="TEST-PAT-001"/>
+                <patientPerson>
+                  <name>
+                    <given>John</given>
+                    <family>Doe</family>
+                  </name>
+                  <birthTime value="19800101"/>
+                  <administrativeGenderCode code="M"/>
+                </patientPerson>
+              </patient>
+            </subject1>
+          </registrationEvent>
+        </subject>
+      </controlActProcess>
+    </PRPA_IN201301UV02>
+  </SOAP-ENV:Body>
+</SOAP-ENV:Envelope>'
+```
+
+Expected response: MCCI_IN000002UV01 acknowledgment with status code "AA" (Application Accept).
+
+**3. Test Error Handling:**
+
+Send an invalid request to verify SOAP fault generation:
+
+```bash
+curl -X POST http://localhost:8080/pix/add \
+  -H "Content-Type: text/xml; charset=utf-8" \
+  -d '<?xml version="1.0"?>
+<SOAP-ENV:Envelope xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP-ENV:Body>
+    <InvalidMessage>Not a valid PRPA message</InvalidMessage>
+  </SOAP-ENV:Body>
+</SOAP-ENV:Envelope>'
+```
+
+Expected response: SOAP Fault with fault code "soap:Sender" and descriptive error message.
+
+**4. Save Request/Response for Analysis:**
+
+```bash
+# Create request file
+cat > pix-request.xml << 'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<SOAP-ENV:Envelope xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP-ENV:Body>
+    <PRPA_IN201301UV02 xmlns="urn:hl7-org:v3" ITSVersion="XML_1.0">
+      <id root="1.2.3.4.5" extension="MSG-67890"/>
+      <creationTime value="20250106160000"/>
+      <controlActProcess>
+        <subject>
+          <registrationEvent>
+            <subject1>
+              <patient>
+                <id root="1.2.840.114350" extension="TEST-PAT-002"/>
+                <patientPerson>
+                  <name>
+                    <given>Jane</given>
+                    <family>Smith</family>
+                  </name>
+                  <birthTime value="19750515"/>
+                  <administrativeGenderCode code="F"/>
+                </patientPerson>
+              </patient>
+            </subject1>
+          </registrationEvent>
+        </subject>
+      </controlActProcess>
+    </PRPA_IN201301UV02>
+  </SOAP-ENV:Body>
+</SOAP-ENV:Envelope>
+EOF
+
+# Send request and save response
+curl -X POST http://localhost:8080/pix/add \
+  -H "Content-Type: text/xml; charset=utf-8" \
+  -d @pix-request.xml \
+  -o pix-response.xml
+
+# Format and view response
+cat pix-response.xml | xmllint --format -
+```
+
+**5. Test HTTPS Endpoint:**
+
+```bash
+# With certificate verification disabled (testing only)
+curl -k -X POST https://localhost:8443/pix/add \
+  -H "Content-Type: text/xml; charset=utf-8" \
+  -d @pix-request.xml
+```
+
+**Note:** Use `-k` flag only for testing with self-signed certificates. In production, always verify TLS certificates.
+
+#### Mock Server Configuration
+
+Configure mock server behavior via `mocks/config.json`:
+
+```json
+{
+  "host": "0.0.0.0",
+  "http_port": 8080,
+  "https_port": 8443,
+  "cert_path": "mocks/cert.pem",
+  "key_path": "mocks/key.pem",
+  "log_level": "INFO",
+  "response_delay_ms": 0,
+  "pix_add_endpoint": "/pix/add",
+  "iti41_endpoint": "/iti41/submit"
+}
+```
+
+**Configuration Options:**
+- `response_delay_ms` - Simulate network latency (0-5000ms)
+- `log_level` - Logging verbosity (DEBUG, INFO, WARNING, ERROR)
+- `pix_add_endpoint` - PIX Add route path
+- `iti41_endpoint` - ITI-41 route path
+
+#### Mock Server Logs
+
+View mock server logs for debugging:
+
+```bash
+# PIX Add transaction logs
+tail -f mocks/logs/pix-add.log
+
+# ITI-41 submission logs
+tail -f mocks/logs/iti41-submissions/
+
+# Main mock server log
+tail -f mocks/logs/mock-server.log
 ```
 
 ### Common CLI Options
