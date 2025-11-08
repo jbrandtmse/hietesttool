@@ -34,3 +34,6 @@ cryptography>=41.0
 
 # Environment management
 python-dotenv>=1.0
+
+# Process management
+psutil>=5.9
