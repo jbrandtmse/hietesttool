@@ -1,16 +1,17 @@
 """Mock PIX Add endpoint for testing."""
 
 import logging
+import random
 import time
 import uuid
 from datetime import datetime, timezone
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
-from flask import Blueprint, Response, request
+from flask import Blueprint, Response, request, g
 from lxml import etree
 
-from .config import MockServerConfig
+from .config import MockServerConfig, ValidationMode
 
 # HL7v3 and SOAP namespaces
 HL7_NS = "urn:hl7-org:v3"
@@ -349,7 +350,21 @@ def handle_pix_add() -> tuple[Response, int]:
     
     start_time = datetime.now(timezone.utc)
     
+    # Get config from Flask context (supports hot-reload) or fallback to global
+    config = getattr(g, "config", _config)
+    if config is None:
+        config = _config
+    
+    behavior = config.pix_add_behavior if config else None
+    
     pix_logger.info("Received PIX Add request")
+    
+    if behavior:
+        pix_logger.debug(
+            f"PIX Add behavior - delay: {behavior.response_delay_ms}ms, "
+            f"failure_rate: {behavior.failure_rate}, "
+            f"validation: {behavior.validation_mode.value}"
+        )
     
     try:
         # Get request data
@@ -357,6 +372,22 @@ def handle_pix_add() -> tuple[Response, int]:
         
         pix_logger.debug(f"Request size: {len(request_data)} bytes")
         pix_logger.debug(f"Full SOAP request:\n{request_data}")
+        
+        # Apply response delay from behavior config
+        if behavior and behavior.response_delay_ms > 0:
+            pix_logger.debug(f"Simulating network delay: {behavior.response_delay_ms}ms")
+            time.sleep(behavior.response_delay_ms / 1000.0)
+        
+        # Simulate failure rate
+        if behavior and behavior.failure_rate > 0:
+            if random.random() < behavior.failure_rate:
+                fault_message = (
+                    behavior.custom_fault_message
+                    or "Simulated PIX Add failure for testing"
+                )
+                pix_logger.info(f"Simulating failure (rate: {behavior.failure_rate})")
+                fault_xml = generate_soap_fault("soap:Receiver", fault_message)
+                return Response(fault_xml, mimetype="text/xml; charset=utf-8"), 500
         
         # Extract patient data from PRPA message
         try:
@@ -378,6 +409,18 @@ def handle_pix_add() -> tuple[Response, int]:
             )
             return Response(fault_xml, mimetype="text/xml; charset=utf-8"), 400
         
+        # Validation mode enforcement
+        if behavior and behavior.validation_mode == ValidationMode.STRICT:
+            # Strict mode: require patient demographics
+            if "first_name" not in patient_data or "last_name" not in patient_data:
+                pix_logger.warning("Strict validation failed: missing patient name")
+                fault_xml = generate_soap_fault(
+                    "soap:Sender",
+                    "Strict validation failed: Missing required patient demographics (name). "
+                    "Enable lenient validation mode or provide complete HL7v3 message.",
+                )
+                return Response(fault_xml, mimetype="text/xml; charset=utf-8"), 400
+        
         # Log extracted patient data
         pix_logger.info(
             f"PIX Add request - MessageID: {patient_data['request_message_id']}, "
@@ -390,16 +433,17 @@ def handle_pix_add() -> tuple[Response, int]:
                 f"{patient_data['last_name']}"
             )
         
-        # Simulate response delay if configured
-        if _config and _config.response_delay_ms > 0:
-            pix_logger.debug(f"Simulating network delay: {_config.response_delay_ms}ms")
-            time.sleep(_config.response_delay_ms / 1000.0)
+        # Use custom patient ID if provided in behavior config
+        response_patient_id = patient_data["patient_id"]
+        if behavior and behavior.custom_patient_id:
+            response_patient_id = behavior.custom_patient_id
+            pix_logger.debug(f"Using custom patient ID: {response_patient_id}")
         
         # Generate acknowledgment
         ack_xml = generate_acknowledgment(
             patient_data["request_message_id"],
             patient_data["request_message_id_oid"],
-            patient_data["patient_id"],
+            response_patient_id,
             patient_data["patient_id_oid"],
             status="AA"
         )

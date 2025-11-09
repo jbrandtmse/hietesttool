@@ -285,8 +285,8 @@ class TestPIXAddEndpointFlow:
         """Test that response delay configuration works."""
         import time
 
-        # Configure with 100ms delay
-        test_config.response_delay_ms = 100
+        # Configure with 100ms delay using per-endpoint behavior
+        test_config.pix_add_behavior.response_delay_ms = 100
         initialize_app(test_config)
         app.config["TESTING"] = True
 

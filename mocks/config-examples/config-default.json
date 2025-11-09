@@ -1,0 +1,17 @@
+{
+  "host": "0.0.0.0",
+  "http_port": 8080,
+  "https_port": 8443,
+  "log_level": "INFO",
+  "save_submitted_documents": false,
+  "pix_add_behavior": {
+    "response_delay_ms": 0,
+    "failure_rate": 0.0,
+    "validation_mode": "lenient"
+  },
+  "iti41_behavior": {
+    "response_delay_ms": 0,
+    "failure_rate": 0.0,
+    "validation_mode": "lenient"
+  }
+}

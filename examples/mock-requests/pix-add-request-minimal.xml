@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope"
+               xmlns:hl7="urn:hl7-org:v3">
+  <soap:Header/>
+  <soap:Body>
+    <hl7:PRPA_IN201301UV02 ITSVersion="XML_1.0">
+      <!-- Minimal Message ID -->
+      <hl7:id root="2.16.840.1.113883.3.72.5.9.1" extension="MINIMAL_MSG_001"/>
+      <hl7:creationTime value="20250108150000"/>
+      <hl7:interactionId root="2.16.840.1.113883.1.6" extension="PRPA_IN201301UV02"/>
+      
+      <!-- Minimal Control Act Process -->
+      <hl7:controlActProcess classCode="CACT" moodCode="EVN">
+        <hl7:code code="PRPA_TE201301UV02" codeSystem="2.16.840.1.113883.1.6"/>
+        
+        <!-- Minimal Patient Registration -->
+        <hl7:subject typeCode="SUBJ">
+          <hl7:registrationEvent classCode="REG" moodCode="EVN">
+            <hl7:id nullFlavor="NA"/>
+            <hl7:statusCode code="active"/>
+            
+            <hl7:subject1 typeCode="SBJ">
+              <hl7:patient classCode="PAT">
+                <!-- Patient ID (required) -->
+                <hl7:id root="1.2.3.4.5" extension="MINIMAL_PAT_001"/>
+                <hl7:statusCode code="active"/>
+                
+                <!-- Minimal Patient Demographics -->
+                <hl7:patientPerson classCode="PSN" determinerCode="INSTANCE">
+                  <!-- Name (required) -->
+                  <hl7:name>
+                    <hl7:given>Jane</hl7:given>
+                    <hl7:family>Smith</hl7:family>
+                  </hl7:name>
+                  
+                  <!-- Gender (required) -->
+                  <hl7:administrativeGenderCode code="F"/>
+                  
+                  <!-- Birth Date (required) -->
+                  <hl7:birthTime value="19900515"/>
+                </hl7:patientPerson>
+              </hl7:patient>
+            </hl7:subject1>
+          </hl7:registrationEvent>
+        </hl7:subject>
+      </hl7:controlActProcess>
+    </hl7:PRPA_IN201301UV02>
+  </soap:Body>
+</soap:Envelope>

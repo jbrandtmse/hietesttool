@@ -5,16 +5,18 @@ that accepts MTOM-encoded SOAP messages with CCD document attachments.
 """
 
 import logging
+import random
+import time
 import uuid
 from datetime import datetime, timezone
 from email import message_from_bytes
 from pathlib import Path
 from typing import Any
 
-from flask import Blueprint, Response, request
+from flask import Blueprint, Response, request, g
 from lxml import etree
 
-from .config import MockServerConfig
+from .config import MockServerConfig, ValidationMode
 
 
 # Create Blueprint
@@ -403,14 +405,39 @@ def handle_iti41_submit() -> tuple[Response, int]:
     """
     logger.info("Received ITI-41 request")
 
-    # Get configuration from app config (set during initialization)
+    # Get configuration from Flask context (supports hot-reload) or app config
     from flask import current_app
-    config: MockServerConfig = current_app.config.get("MOCK_SERVER_CONFIG")
+    config: MockServerConfig = getattr(g, "config", None) or current_app.config.get("MOCK_SERVER_CONFIG")
+    
+    behavior = config.iti41_behavior if config else None
+    
+    if behavior:
+        logger.debug(
+            f"ITI-41 behavior - delay: {behavior.response_delay_ms}ms, "
+            f"failure_rate: {behavior.failure_rate}, "
+            f"validation: {behavior.validation_mode.value}"
+        )
 
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     request_id = str(uuid.uuid4())
 
     try:
+        # Apply response delay from behavior config
+        if behavior and behavior.response_delay_ms > 0:
+            logger.debug(f"Simulating network delay: {behavior.response_delay_ms}ms")
+            time.sleep(behavior.response_delay_ms / 1000.0)
+        
+        # Simulate failure rate
+        if behavior and behavior.failure_rate > 0:
+            if random.random() < behavior.failure_rate:
+                fault_message = (
+                    behavior.custom_fault_message
+                    or "Simulated ITI-41 submission failure for testing"
+                )
+                logger.info(f"Simulating failure (rate: {behavior.failure_rate})")
+                fault_xml = generate_soap_fault("soap:Receiver", fault_message)
+                return Response(fault_xml, mimetype="application/soap+xml; charset=utf-8"), 500
+        
         # Get request data
         content_type = request.content_type or ""
         request_data = request.data
@@ -458,14 +485,37 @@ def handle_iti41_submit() -> tuple[Response, int]:
                 str(e)
             )
             return Response(fault_xml, mimetype="application/soap+xml; charset=utf-8"), 400
+        
+        # Validation mode enforcement
+        if behavior and behavior.validation_mode == ValidationMode.STRICT:
+            # Strict mode: require all XDSb metadata
+            required_fields = ["patient_id", "class_code", "type_code"]
+            missing_fields = [f for f in required_fields if f not in metadata]
+            if missing_fields:
+                logger.warning(f"Strict validation failed: missing {missing_fields}")
+                fault_xml = generate_soap_fault(
+                    "soap:Sender",
+                    f"Strict validation failed: Missing required XDSb metadata fields: {', '.join(missing_fields)}. "
+                    f"Enable lenient validation mode or provide complete XDSb metadata.",
+                )
+                return Response(fault_xml, mimetype="application/soap+xml; charset=utf-8"), 400
 
         # Setup logging directory
         log_dir = Path("mocks/logs/iti41-submissions")
         log_dir.mkdir(parents=True, exist_ok=True)
 
-        # Log submission metadata
+        # Use custom IDs if provided in behavior config
         doc_id = metadata.get("document_unique_id", "unknown")
         submission_set_id = metadata.get("submission_set_id", "unknown")
+        
+        if behavior and behavior.custom_document_id:
+            doc_id = behavior.custom_document_id
+            logger.debug(f"Using custom document ID: {doc_id}")
+        
+        if behavior and behavior.custom_submission_set_id:
+            submission_set_id = behavior.custom_submission_set_id
+            logger.debug(f"Using custom submission set ID: {submission_set_id}")
+        
         patient_id = metadata.get("patient_id", "unknown")
 
         logger.info(f"ITI-41 Submission - SubmissionSetID: {submission_set_id}")

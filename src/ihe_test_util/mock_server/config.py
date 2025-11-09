@@ -2,9 +2,97 @@
 
 import json
 import os
+from enum import Enum
 from pathlib import Path
+from typing import Optional
 
 from pydantic import BaseModel, Field, field_validator
+
+
+class ValidationMode(str, Enum):
+    """Validation mode for mock endpoints."""
+
+    STRICT = "strict"
+    LENIENT = "lenient"
+
+
+class PIXAddBehavior(BaseModel):
+    """PIX Add endpoint behavior configuration.
+    
+    Attributes:
+        response_delay_ms: Response delay in milliseconds (0-5000)
+        failure_rate: Probability of returning SOAP fault (0.0-1.0)
+        custom_patient_id: Custom patient ID for acknowledgment
+        custom_fault_message: Custom SOAP fault message on failure
+        validation_mode: Validation strictness (strict or lenient)
+    """
+
+    response_delay_ms: int = Field(
+        default=0,
+        ge=0,
+        le=5000,
+        description="Response delay in milliseconds",
+    )
+    failure_rate: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=1.0,
+        description="Probability of returning SOAP fault (0.0-1.0)",
+    )
+    custom_patient_id: Optional[str] = Field(
+        default=None,
+        description="Custom patient ID for acknowledgment",
+    )
+    custom_fault_message: Optional[str] = Field(
+        default=None,
+        description="Custom SOAP fault message on failure",
+    )
+    validation_mode: ValidationMode = Field(
+        default=ValidationMode.LENIENT,
+        description="Validation strictness",
+    )
+
+
+class ITI41Behavior(BaseModel):
+    """ITI-41 endpoint behavior configuration.
+    
+    Attributes:
+        response_delay_ms: Response delay in milliseconds (0-5000)
+        failure_rate: Probability of returning SOAP fault (0.0-1.0)
+        custom_submission_set_id: Custom submission set unique ID
+        custom_document_id: Custom document unique ID
+        custom_fault_message: Custom SOAP fault message on failure
+        validation_mode: Validation strictness (strict or lenient)
+    """
+
+    response_delay_ms: int = Field(
+        default=0,
+        ge=0,
+        le=5000,
+        description="Response delay in milliseconds",
+    )
+    failure_rate: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=1.0,
+        description="Probability of returning SOAP fault (0.0-1.0)",
+    )
+    custom_submission_set_id: Optional[str] = Field(
+        default=None,
+        description="Custom submission set unique ID",
+    )
+    custom_document_id: Optional[str] = Field(
+        default=None,
+        description="Custom document unique ID",
+    )
+    custom_fault_message: Optional[str] = Field(
+        default=None,
+        description="Custom SOAP fault message on failure",
+    )
+    validation_mode: ValidationMode = Field(
+        default=ValidationMode.LENIENT,
+        description="Validation strictness",
+    )
 
 
 class MockServerConfig(BaseModel):
@@ -25,8 +113,23 @@ class MockServerConfig(BaseModel):
     log_path: str = Field(default="mocks/logs/mock-server.log", description="Log file path")
     pix_add_endpoint: str = Field(default="/pix/add", description="PIX Add endpoint path")
     iti41_endpoint: str = Field(default="/iti41/submit", description="ITI-41 endpoint path")
-    response_delay_ms: int = Field(default=0, ge=0, le=5000, description="Response delay simulation in milliseconds")
+    response_delay_ms: int = Field(
+        default=0,
+        ge=0,
+        le=5000,
+        description="DEPRECATED: Global response delay. Use per-endpoint behavior configuration instead.",
+    )
     save_submitted_documents: bool = Field(default=False, description="Save submitted CCD documents to disk")
+
+    # Per-endpoint behavior configuration
+    pix_add_behavior: PIXAddBehavior = Field(
+        default_factory=PIXAddBehavior,
+        description="PIX Add endpoint behavior configuration",
+    )
+    iti41_behavior: ITI41Behavior = Field(
+        default_factory=ITI41Behavior,
+        description="ITI-41 endpoint behavior configuration",
+    )
 
     @field_validator("log_level")
     @classmethod
@@ -107,3 +210,59 @@ def load_config(config_file: Path | None = None) -> MockServerConfig:
         raise ValueError(f"Configuration validation failed: {e}")
 
     return config
+
+
+class ConfigWatcher:
+    """Watches configuration file for changes and reloads.
+    
+    Attributes:
+        config_path: Path to configuration file
+        config: Current configuration instance
+        last_modified: Last modification time of config file
+    """
+
+    def __init__(self, config_path: Path, config: MockServerConfig):
+        """Initialize ConfigWatcher.
+        
+        Args:
+            config_path: Path to configuration file to watch
+            config: Initial configuration instance
+        """
+        self.config_path = config_path
+        self.config = config
+        self.last_modified = self._get_mtime()
+
+    def _get_mtime(self) -> float:
+        """Get file modification time.
+        
+        Returns:
+            Modification timestamp, or 0.0 if file doesn't exist
+        """
+        if self.config_path.exists():
+            return self.config_path.stat().st_mtime
+        return 0.0
+
+    def check_reload(self) -> bool:
+        """Check if config file changed and reload if needed.
+        
+        Returns:
+            True if config was reloaded, False otherwise
+        """
+        import logging
+
+        logger = logging.getLogger(__name__)
+
+        current_mtime = self._get_mtime()
+        if current_mtime > self.last_modified:
+            try:
+                self.config = load_config(self.config_path)
+                self.last_modified = current_mtime
+                logger.info("Configuration reloaded from %s", self.config_path)
+                return True
+            except Exception as e:
+                logger.warning(
+                    "Failed to reload configuration from %s: %s. Keeping existing config.",
+                    self.config_path,
+                    e,
+                )
+        return False

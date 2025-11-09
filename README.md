@@ -205,11 +205,86 @@ John,Doe,1980-01-01,M,1.2.3.4,TEST-001
 Jane,Smith,1975-05-15,F,1.2.3.4,TEST-002
 ```
 
-### Running Mock IHE Endpoints
+## Mock Server
 
-The IHE Test Utility includes built-in Flask-based mock servers for PIX Add and ITI-41 endpoints, enabling local testing without external dependencies.
+The IHE Test Utility includes a built-in Flask-based mock server that simulates IHE endpoints for local testing, eliminating the need for external test systems during development.
 
-#### Starting the Mock Server
+### Quick Start - Mock Server
+
+Start a mock server in 3 simple commands:
+
+```bash
+# 1. Start the mock server
+ihe-test-util mock start
+
+# 2. Verify it's running
+curl http://localhost:8080/health
+
+# 3. Send a test request
+curl -X POST http://localhost:8080/pix/add \
+  -H "Content-Type: application/soap+xml; charset=UTF-8" \
+  -d @examples/mock-requests/pix-add-request.xml
+```
+
+### Mock Server Features
+
+- ✅ **PIX Add endpoint** - Simulates patient registration (ITI-8)
+- ✅ **ITI-41 endpoint** - Simulates document submission with MTOM
+- ✅ **Configurable behaviors** - Response delays, failure rates, validation modes
+- ✅ **Request logging** - All requests logged for debugging
+- ✅ **No external dependencies** - Runs entirely on localhost
+
+### Available Commands
+
+```bash
+# Start HTTP mock server (default port 8080)
+ihe-test-util mock start
+
+# Start HTTPS mock server (port 8443)
+ihe-test-util mock start --https
+
+# Start on custom port
+ihe-test-util mock start --port 9090
+
+# Start with custom configuration
+ihe-test-util mock start --config mocks/config-examples/config-unreliable.json
+
+# Check server status
+ihe-test-util mock status
+
+# View server logs
+ihe-test-util mock logs
+
+# Stop the server
+ihe-test-util mock stop
+```
+
+### Example Configurations
+
+Pre-configured examples available in `mocks/config-examples/`:
+
+- **config-default.json** - Standard behavior for most testing
+- **config-network-latency.json** - Simulates slow networks (500-2000ms delays)
+- **config-unreliable.json** - Random failures (30% failure rate) for error testing
+- **config-strict-validation.json** - Strict SOAP validation
+- **config-lenient-validation.json** - Relaxed validation for quick testing
+
+### Complete Documentation
+
+For comprehensive mock server documentation including:
+- Step-by-step tutorials
+- Configuration options
+- Troubleshooting guide
+- CI/CD integration examples
+- Security warnings and best practices
+
+See:
+- **[Mock Server Documentation](docs/mock-servers.md)** - Complete guide
+- **[Tutorial: Using Mock Endpoints](examples/tutorials/05-mock-endpoints.md)** - Step-by-step examples
+- **[Mock Request Examples](examples/mock-requests/README.md)** - Example SOAP requests
+- **[Configuration Guide](docs/mock-server-configuration.md)** - Detailed configuration reference
+
+### Starting the Mock Server
 
 ```bash
 # Generate self-signed certificate for HTTPS (first time only)

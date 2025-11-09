@@ -1,0 +1,17 @@
+{
+  "host": "0.0.0.0",
+  "http_port": 8080,
+  "log_level": "INFO",
+  "pix_add_behavior": {
+    "response_delay_ms": 200,
+    "failure_rate": 0.2,
+    "custom_fault_message": "PIX Manager temporarily unavailable",
+    "validation_mode": "lenient"
+  },
+  "iti41_behavior": {
+    "response_delay_ms": 300,
+    "failure_rate": 0.15,
+    "custom_fault_message": "XDS Repository storage fault",
+    "validation_mode": "lenient"
+  }
+}

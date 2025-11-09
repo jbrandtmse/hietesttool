@@ -1,0 +1,18 @@
+{
+  "host": "0.0.0.0",
+  "http_port": 8080,
+  "log_level": "INFO",
+  "pix_add_behavior": {
+    "response_delay_ms": 0,
+    "failure_rate": 0.0,
+    "custom_patient_id": "TEST-PATIENT-12345",
+    "validation_mode": "lenient"
+  },
+  "iti41_behavior": {
+    "response_delay_ms": 0,
+    "failure_rate": 0.0,
+    "custom_submission_set_id": "1.2.840.113619.1.2.3.4.5.6.7.8.9",
+    "custom_document_id": "1.2.840.113619.9.8.7.6.5.4.3.2.1",
+    "validation_mode": "lenient"
+  }
+}
