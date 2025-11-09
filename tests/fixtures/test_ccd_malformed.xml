@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ClinicalDocument xmlns="urn:hl7-org:v3">
+  <realmCode code="US"/>
+  <id root="{{document_id}}"/>
+  <recordTarget>
+    <patientRole>
+      <id extension="{{patient_id}}" root="{{patient_id_oid}}"/>
+      <!-- Missing closing tag for patient -->
+      <patient>
+        <name>
+          <given>{{first_name}}</given>
+          <family>{{last_name}}</family>
+        </name>
+  </recordTarget>
+</ClinicalDocument>

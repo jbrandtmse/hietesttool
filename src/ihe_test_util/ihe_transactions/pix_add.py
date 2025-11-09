@@ -8,13 +8,18 @@ from lxml import etree
 
 logger = logging.getLogger(__name__)
 
-# HL7v3 namespaces
+# HL7v3 and SOAP namespaces
 HL7_NS = "urn:hl7-org:v3"
 XSI_NS = "http://www.w3.org/2001/XMLSchema-instance"
+SOAP_NS = "http://schemas.xmlsoap.org/soap/envelope/"
 
 NSMAP = {
     None: HL7_NS,
     "xsi": XSI_NS,
+}
+
+SOAP_NSMAP = {
+    "SOAP-ENV": SOAP_NS,
 }
 
 
@@ -235,9 +240,17 @@ def build_pix_add_message(
     entity_id_elem = etree.SubElement(assigned_entity_elem, f"{{{HL7_NS}}}id")
     entity_id_elem.set("root", sending_facility)
     
+    # Wrap PRPA message in SOAP envelope
+    soap_envelope = etree.Element(
+        f"{{{SOAP_NS}}}Envelope",
+        nsmap=SOAP_NSMAP
+    )
+    soap_body = etree.SubElement(soap_envelope, f"{{{SOAP_NS}}}Body")
+    soap_body.append(root)
+    
     # Convert to string
     xml_string = etree.tostring(
-        root,
+        soap_envelope,
         pretty_print=True,
         xml_declaration=True,
         encoding="UTF-8"

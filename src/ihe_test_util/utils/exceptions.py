@@ -47,12 +47,58 @@ class ConfigurationError(IHETestUtilError):
 
 
 class TemplateError(IHETestUtilError):
-    """Raised when template processing errors occur.
+    """Base exception for template processing errors.
     
     Examples:
         - Template file not found
         - Invalid template syntax
         - Missing template variables
+    """
+
+    pass
+
+
+class TemplateLoadError(TemplateError):
+    """Raised when template file cannot be loaded.
+    
+    Examples:
+        - File not found
+        - Permission denied
+        - Encoding errors
+    """
+
+    pass
+
+
+class MalformedXMLError(TemplateError):
+    """Raised when XML is not well-formed.
+    
+    Examples:
+        - Unclosed tags
+        - Invalid characters
+        - Syntax errors
+    """
+
+    pass
+
+
+class MissingPlaceholderError(TemplateError):
+    """Raised when required placeholders are missing from template.
+    
+    Examples:
+        - Missing patient_id placeholder
+        - Missing required CCD fields
+    """
+
+    pass
+
+
+class TemplateValidationError(TemplateError):
+    """General template validation error.
+    
+    Examples:
+        - Invalid placeholder syntax
+        - Template structure validation failure
     """
 
     pass

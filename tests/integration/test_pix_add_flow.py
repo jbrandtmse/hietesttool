@@ -66,30 +66,39 @@ def test_pix_add_message_structure(sample_patient):
     message_xml = build_pix_add_message(sample_patient)
     root = etree.fromstring(message_xml.encode("utf-8"))
     
-    # Assert - Check namespaces
+    # Assert - Check SOAP envelope
+    soap_ns = "http://schemas.xmlsoap.org/soap/envelope/"
+    assert root.tag == f"{{{soap_ns}}}Envelope"
+    
+    # Find SOAP body
+    soap_body = root.find(f".//{{{soap_ns}}}Body")
+    assert soap_body is not None
+    
+    # Find PRPA message inside SOAP body
     hl7_ns = "urn:hl7-org:v3"
-    assert root.nsmap[None] == hl7_ns
+    prpa_elem = soap_body.find(f".//{{{hl7_ns}}}PRPA_IN201301UV02")
+    assert prpa_elem is not None
     
     # Assert - Check required elements
-    id_elem = root.find(f".//{{{hl7_ns}}}id")
+    id_elem = prpa_elem.find(f".//{{{hl7_ns}}}id")
     assert id_elem is not None
     
-    creation_time = root.find(f".//{{{hl7_ns}}}creationTime")
+    creation_time = prpa_elem.find(f".//{{{hl7_ns}}}creationTime")
     assert creation_time is not None
     
-    patient_elem = root.find(f".//{{{hl7_ns}}}patient")
+    patient_elem = prpa_elem.find(f".//{{{hl7_ns}}}patient")
     assert patient_elem is not None
     
     # Check patient demographics
-    given_name = root.find(f".//{{{hl7_ns}}}given")
+    given_name = prpa_elem.find(f".//{{{hl7_ns}}}given")
     assert given_name is not None
     assert given_name.text == "John"
     
-    family_name = root.find(f".//{{{hl7_ns}}}family")
+    family_name = prpa_elem.find(f".//{{{hl7_ns}}}family")
     assert family_name is not None
     assert family_name.text == "Doe"
     
-    gender = root.find(f".//{{{hl7_ns}}}administrativeGenderCode")
+    gender = prpa_elem.find(f".//{{{hl7_ns}}}administrativeGenderCode")
     assert gender is not None
     assert gender.get("code") == "M"
 

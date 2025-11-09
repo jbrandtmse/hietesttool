@@ -14,8 +14,31 @@ from src.ihe_test_util.ihe_transactions.parsers import (
 )
 
 
-# HL7v3 namespace
+# HL7v3 and SOAP namespaces
 HL7_NS = "urn:hl7-org:v3"
+SOAP_NS = "http://schemas.xmlsoap.org/soap/envelope/"
+
+
+def extract_hl7v3_from_soap(message_xml: str) -> etree._Element:
+    """Extract HL7v3 message from SOAP envelope.
+    
+    Args:
+        message_xml: SOAP-wrapped message
+        
+    Returns:
+        The HL7v3 message element from SOAP Body
+    """
+    root = etree.fromstring(message_xml.encode("utf-8"))
+    
+    # Check if this is a SOAP envelope
+    if root.tag == f"{{{SOAP_NS}}}Envelope":
+        # Extract from SOAP Body
+        body = root.find(f"{{{SOAP_NS}}}Body")
+        if body is not None and len(body) > 0:
+            return body[0]  # Return first child (the HL7v3 message)
+    
+    # If not SOAP-wrapped, return as-is
+    return root
 
 
 @pytest.fixture
@@ -113,7 +136,7 @@ class TestPRPAIN201301UV02MessageConstruction:
         """
         # Act
         message_xml = build_pix_add_message(sample_patient)
-        root = etree.fromstring(message_xml.encode("utf-8"))
+        root = extract_hl7v3_from_soap(message_xml)
         
         # Assert
         assert root.tag == f"{{{HL7_NS}}}PRPA_IN201301UV02"
@@ -126,7 +149,7 @@ class TestPRPAIN201301UV02MessageConstruction:
         """
         # Act
         message_xml = build_pix_add_message(sample_patient)
-        root = etree.fromstring(message_xml.encode("utf-8"))
+        root = extract_hl7v3_from_soap(message_xml)
         
         # Assert
         assert root.nsmap[None] == HL7_NS
@@ -140,7 +163,7 @@ class TestPRPAIN201301UV02MessageConstruction:
         """
         # Act
         message_xml = build_pix_add_message(sample_patient)
-        root = etree.fromstring(message_xml.encode("utf-8"))
+        root = extract_hl7v3_from_soap(message_xml)
         
         # Assert - Required header elements
         id_elem = root.find(f"{{{HL7_NS}}}id")
@@ -175,7 +198,7 @@ class TestPRPAIN201301UV02MessageConstruction:
         """
         # Act
         message_xml = build_pix_add_message(sample_patient)
-        root = etree.fromstring(message_xml.encode("utf-8"))
+        root = extract_hl7v3_from_soap(message_xml)
         
         # Assert - Receiver
         receiver = root.find(f"{{{HL7_NS}}}receiver")
@@ -194,7 +217,7 @@ class TestPRPAIN201301UV02MessageConstruction:
         """
         # Act
         message_xml = build_pix_add_message(sample_patient)
-        root = etree.fromstring(message_xml.encode("utf-8"))
+        root = extract_hl7v3_from_soap(message_xml)
         
         # Assert
         control_act = root.find(f"{{{HL7_NS}}}controlActProcess")
@@ -213,7 +236,7 @@ class TestPRPAIN201301UV02MessageConstruction:
         """
         # Act
         message_xml = build_pix_add_message(sample_patient)
-        root = etree.fromstring(message_xml.encode("utf-8"))
+        root = extract_hl7v3_from_soap(message_xml)
         
         # Assert - Patient ID
         patient_id_elem = root.find(f".//{{{HL7_NS}}}patient/{{{HL7_NS}}}id")
@@ -263,7 +286,7 @@ class TestPRPAIN201301UV02MessageConstruction:
         
         # Act
         message_xml = build_pix_add_message(minimal_patient)
-        root = etree.fromstring(message_xml.encode("utf-8"))
+        root = extract_hl7v3_from_soap(message_xml)
         
         # Assert - Basic structure still correct
         assert root.tag == f"{{{HL7_NS}}}PRPA_IN201301UV02"
@@ -405,7 +428,7 @@ class TestHL7v3MessageValidation:
             
             # Act
             message_xml = build_pix_add_message(patient)
-            root = etree.fromstring(message_xml.encode("utf-8"))
+            root = extract_hl7v3_from_soap(message_xml)
             
             # Assert
             gender_elem = root.find(f".//{{{HL7_NS}}}administrativeGenderCode")
