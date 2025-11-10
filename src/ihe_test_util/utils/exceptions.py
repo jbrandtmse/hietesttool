@@ -137,6 +137,18 @@ class InvalidOIDFormatError(TemplateError):
     pass
 
 
+class CCDPersonalizationError(TemplateError):
+    """Raised when CCD personalization fails.
+    
+    Examples:
+        - Failed to personalize template with patient data
+        - Post-personalization validation failure
+        - Missing required patient fields
+    """
+
+    pass
+
+
 class SAMLError(IHETestUtilError):
     """Raised when SAML generation or signing errors occur.
     

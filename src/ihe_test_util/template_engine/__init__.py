@@ -3,6 +3,7 @@
 This module provides CCD template processing and personalization functionality.
 """
 
+from ihe_test_util.template_engine.ccd_personalizer import CCDPersonalizer
 from ihe_test_util.template_engine.loader import TemplateLoader
 from ihe_test_util.template_engine.personalizer import (
     MissingValueStrategy,
@@ -20,6 +21,7 @@ from ihe_test_util.template_engine.validators import (
 
 
 __all__ = [
+    "CCDPersonalizer",
     "MissingValueStrategy",
     "REQUIRED_CCD_FIELDS",
     "TemplateLoader",
