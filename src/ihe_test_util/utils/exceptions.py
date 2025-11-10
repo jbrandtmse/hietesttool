@@ -104,6 +104,39 @@ class TemplateValidationError(TemplateError):
     pass
 
 
+class MissingPlaceholderValueError(TemplateError):
+    """Raised when required placeholder value is missing during personalization.
+    
+    Examples:
+        - Required patient_id value not provided
+        - Missing required CCD field values
+    """
+
+    pass
+
+
+class MaxNestingDepthError(TemplateError):
+    """Raised when nested placeholders exceed maximum depth.
+    
+    Examples:
+        - Recursive placeholder nesting too deep
+        - Circular placeholder references
+    """
+
+    pass
+
+
+class InvalidOIDFormatError(TemplateError):
+    """Raised when OID format is invalid (strict mode only).
+    
+    Examples:
+        - OID with invalid characters
+        - OID with incorrect format
+    """
+
+    pass
+
+
 class SAMLError(IHETestUtilError):
     """Raised when SAML generation or signing errors occur.
     

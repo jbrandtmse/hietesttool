@@ -1,8 +1,0 @@
-{
-  "pid": 12345,
-  "port": 8080,
-  "protocol": "http",
-  "host": "0.0.0.0",
-  "start_time": "2025-11-09T15:39:39.501796+00:00",
-  "config_file": null
-}
