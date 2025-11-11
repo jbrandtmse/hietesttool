@@ -161,6 +161,41 @@ class SAMLError(IHETestUtilError):
     pass
 
 
+class CertificateLoadError(SAMLError):
+    """Raised when certificate loading fails.
+    
+    Examples:
+        - Certificate file not found
+        - Invalid certificate format
+        - Incorrect password for encrypted key
+        - Corrupted certificate file
+    """
+
+    pass
+
+
+class CertificateValidationError(SAMLError):
+    """Raised when certificate validation fails.
+    
+    Examples:
+        - Certificate expired
+        - Certificate not yet valid
+        - Invalid key usage
+        - Certificate chain validation failure
+    """
+
+    pass
+
+
+class CertificateExpiredError(CertificateValidationError):
+    """Raised when certificate has expired.
+    
+    This is a specific case of validation failure for expired certificates.
+    """
+
+    pass
+
+
 class HL7v3Error(IHETestUtilError):
     """Raised when HL7v3 message construction or parsing fails.
     

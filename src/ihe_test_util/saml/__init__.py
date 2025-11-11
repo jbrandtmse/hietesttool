@@ -11,12 +11,30 @@ issues. SignXML (pure Python with lxml/cryptography) is the recommended alternat
 """
 
 from ihe_test_util.saml.generator import generate_saml_assertion
-from ihe_test_util.saml.certificate_manager import CertificateManager
+from ihe_test_util.saml.certificate_manager import (
+    load_certificate,
+    load_pem_certificate,
+    load_pem_private_key,
+    load_pkcs12_certificate,
+    load_der_certificate,
+    validate_certificate,
+    get_certificate_info,
+    check_expiration_warning,
+    clear_certificate_cache,
+)
 
 # Note: signer.py and verifier.py contain python-xmlsec implementations
 # For production use, recommend SignXML library instead (see examples/signxml_saml_example.py)
 
 __all__ = [
     "generate_saml_assertion",
-    "CertificateManager",
+    "load_certificate",
+    "load_pem_certificate",
+    "load_pem_private_key",
+    "load_pkcs12_certificate",
+    "load_der_certificate",
+    "validate_certificate",
+    "get_certificate_info",
+    "check_expiration_warning",
+    "clear_certificate_cache",
 ]
