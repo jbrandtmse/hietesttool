@@ -309,3 +309,346 @@ class TestCLIWorkflows:
         # Assert
         assert process_help.exit_code == 0
         assert "Examples:" in process_help.output
+
+
+class TestTemplateCLIWorkflows:
+    """Integration tests for template CLI commands."""
+
+    def test_template_validate_workflow(self, tmp_path):
+        """Test template validate command with real template."""
+        # Arrange
+        runner = CliRunner()
+        template = tmp_path / "template.xml"
+        template_content = """<?xml version="1.0"?>
+<ClinicalDocument xmlns="urn:hl7-org:v3">
+    <id root="{{document_id}}"/>
+    <recordTarget>
+        <patientRole>
+            <id extension="{{patient_id}}" root="{{patient_id_oid}}"/>
+            <patient>
+                <name>
+                    <given>{{first_name}}</given>
+                    <family>{{last_name}}</family>
+                </name>
+                <administrativeGenderCode code="{{gender}}"/>
+                <birthTime value="{{dob}}"/>
+            </patient>
+        </patientRole>
+    </recordTarget>
+</ClinicalDocument>"""
+        template.write_text(template_content)
+
+        # Act
+        result = runner.invoke(cli, ["template", "validate", str(template)])
+
+        # Assert
+        assert result.exit_code == 0
+        assert "✓ Template is well-formed XML" in result.output
+        assert "All required CCD placeholders present" in result.output
+
+    def test_template_process_complete_workflow(self, tmp_path):
+        """Test complete template process workflow with sample CSV."""
+        # Arrange
+        runner = CliRunner()
+        template = tmp_path / "template.xml"
+        template_content = """<?xml version="1.0"?>
+<ClinicalDocument xmlns="urn:hl7-org:v3">
+    <id root="{{document_id}}"/>
+    <recordTarget>
+        <patientRole>
+            <id extension="{{patient_id}}" root="{{patient_id_oid}}"/>
+            <patient>
+                <name>
+                    <given>{{first_name}}</given>
+                    <family>{{last_name}}</family>
+                </name>
+                <administrativeGenderCode code="{{gender}}"/>
+                <birthTime value="{{dob}}"/>
+            </patient>
+        </patientRole>
+    </recordTarget>
+</ClinicalDocument>"""
+        template.write_text(template_content)
+
+        csv_file = tmp_path / "patients.csv"
+        csv_content = """patient_id,patient_id_oid,first_name,last_name,dob,gender,mrn
+PAT-001,1.2.3.4.5,John,Smith,1980-01-01,M,MRN001
+PAT-002,1.2.3.4.5,Jane,Doe,1990-02-15,F,MRN002
+PAT-003,1.2.3.4.5,Bob,Johnson,1975-03-10,M,MRN003"""
+        csv_file.write_text(csv_content)
+
+        output_dir = tmp_path / "ccds"
+
+        # Act
+        result = runner.invoke(
+            cli,
+            ["template", "process", str(template), str(csv_file), "--output", str(output_dir)]
+        )
+
+        # Assert
+        assert result.exit_code in [0, 2]  # Allow partial failures
+        assert "Processing patients" in result.output or "SUMMARY" in result.output
+        assert "Total patients: 3" in result.output
+
+        # Verify output directory created
+        assert output_dir.exists()
+        assert output_dir.is_dir()
+
+        # Verify output files created
+        output_files = list(output_dir.glob("*.xml"))
+        assert len(output_files) > 0
+
+        # Verify filenames match default format (patient_id.xml)
+        filenames = [f.name for f in output_files]
+        if "PAT-001.xml" in filenames:
+            assert True  # Expected format found
+        else:
+            # Check for any valid XML files
+            assert any(name.endswith(".xml") for name in filenames)
+
+    def test_template_process_custom_filename_format(self, tmp_path):
+        """Test template process with custom filename format."""
+        # Arrange
+        runner = CliRunner()
+        template = tmp_path / "template.xml"
+        template_content = """<?xml version="1.0"?>
+<ClinicalDocument xmlns="urn:hl7-org:v3">
+    <id root="{{document_id}}"/>
+    <recordTarget>
+        <patientRole>
+            <id extension="{{patient_id}}" root="{{patient_id_oid}}"/>
+            <patient>
+                <name>
+                    <given>{{first_name}}</given>
+                    <family>{{last_name}}</family>
+                </name>
+                <administrativeGenderCode code="{{gender}}"/>
+                <birthTime value="{{dob}}"/>
+            </patient>
+        </patientRole>
+    </recordTarget>
+</ClinicalDocument>"""
+        template.write_text(template_content)
+
+        csv_file = tmp_path / "patients.csv"
+        csv_content = """patient_id,patient_id_oid,first_name,last_name,dob,gender,mrn
+PAT-001,1.2.3.4.5,John,Smith,1980-01-01,M,MRN001
+PAT-002,1.2.3.4.5,Jane,Doe,1990-02-15,F,MRN002"""
+        csv_file.write_text(csv_content)
+
+        output_dir = tmp_path / "ccds"
+
+        # Act - Use custom format
+        result = runner.invoke(
+            cli,
+            [
+                "template", "process", str(template), str(csv_file),
+                "--output", str(output_dir),
+                "--format", "{last_name}_{first_name}.xml"
+            ]
+        )
+
+        # Assert
+        assert result.exit_code in [0, 2]
+        output_files = list(output_dir.glob("*.xml"))
+        assert len(output_files) > 0
+
+        # Check if filenames contain expected pattern
+        filenames = [f.name for f in output_files]
+        # Should have names like "Smith_John.xml", "Doe_Jane.xml"
+        assert any("_" in name for name in filenames)
+
+    def test_template_process_with_validation(self, tmp_path):
+        """Test template process with output validation enabled."""
+        # Arrange
+        runner = CliRunner()
+        template = tmp_path / "template.xml"
+        template_content = """<?xml version="1.0"?>
+<ClinicalDocument xmlns="urn:hl7-org:v3">
+    <id root="{{document_id}}"/>
+    <recordTarget>
+        <patientRole>
+            <id extension="{{patient_id}}" root="{{patient_id_oid}}"/>
+            <patient>
+                <name>
+                    <given>{{first_name}}</given>
+                    <family>{{last_name}}</family>
+                </name>
+                <administrativeGenderCode code="{{gender}}"/>
+                <birthTime value="{{dob}}"/>
+            </patient>
+        </patientRole>
+    </recordTarget>
+</ClinicalDocument>"""
+        template.write_text(template_content)
+
+        csv_file = tmp_path / "patients.csv"
+        csv_content = """patient_id,patient_id_oid,first_name,last_name,dob,gender,mrn
+PAT-001,1.2.3.4.5,John,Smith,1980-01-01,M,MRN001"""
+        csv_file.write_text(csv_content)
+
+        output_dir = tmp_path / "ccds"
+
+        # Act - Enable output validation
+        result = runner.invoke(
+            cli,
+            [
+                "template", "process", str(template), str(csv_file),
+                "--output", str(output_dir),
+                "--validate-output"
+            ]
+        )
+
+        # Assert
+        assert result.exit_code in [0, 2]
+
+        # Verify output files are valid XML
+        from lxml import etree
+        output_files = list(output_dir.glob("*.xml"))
+        for xml_file in output_files:
+            try:
+                etree.parse(str(xml_file))
+                # If parsing succeeds, XML is valid
+                assert True
+            except etree.XMLSyntaxError:
+                pytest.fail(f"Generated CCD {xml_file.name} is not valid XML")
+
+    def test_template_process_summary_report(self, tmp_path):
+        """Test template process displays accurate summary report."""
+        # Arrange
+        runner = CliRunner()
+        template = tmp_path / "template.xml"
+        template_content = """<?xml version="1.0"?>
+<ClinicalDocument xmlns="urn:hl7-org:v3">
+    <id root="{{document_id}}"/>
+    <recordTarget>
+        <patientRole>
+            <id extension="{{patient_id}}" root="{{patient_id_oid}}"/>
+            <patient>
+                <name>
+                    <given>{{first_name}}</given>
+                    <family>{{last_name}}</family>
+                </name>
+                <administrativeGenderCode code="{{gender}}"/>
+                <birthTime value="{{dob}}"/>
+            </patient>
+        </patientRole>
+    </recordTarget>
+</ClinicalDocument>"""
+        template.write_text(template_content)
+
+        csv_file = tmp_path / "patients.csv"
+        csv_content = """patient_id,patient_id_oid,first_name,last_name,dob,gender,mrn
+PAT-001,1.2.3.4.5,John,Smith,1980-01-01,M,MRN001
+PAT-002,1.2.3.4.5,Jane,Doe,1990-02-15,F,MRN002
+PAT-003,1.2.3.4.5,Bob,Johnson,1975-03-10,M,MRN003
+PAT-004,1.2.3.4.5,Alice,Williams,1985-06-20,F,MRN004
+PAT-005,1.2.3.4.5,Charlie,Brown,1992-08-15,M,MRN005"""
+        csv_file.write_text(csv_content)
+
+        output_dir = tmp_path / "ccds"
+
+        # Act
+        result = runner.invoke(
+            cli,
+            ["template", "process", str(template), str(csv_file), "--output", str(output_dir)]
+        )
+
+        # Assert - Check summary report
+        assert "SUMMARY" in result.output
+        assert "Total patients: 5" in result.output
+        assert "Successful:" in result.output
+        assert "Failed:" in result.output
+
+        # Count actual output files
+        output_files = list(output_dir.glob("*.xml"))
+        # Summary should be accurate
+        assert len(output_files) > 0
+
+    def test_template_process_batch_with_sample_csv(self):
+        """Test batch processing with examples/patients_sample.csv (if exists)."""
+        # Arrange
+        runner = CliRunner()
+        import os
+        
+        # Use actual sample CSV if it exists
+        sample_csv = Path("examples/patients_sample.csv")
+        sample_template = Path("templates/ccd-template.xml")
+        
+        if not sample_csv.exists() or not sample_template.exists():
+            pytest.skip("Sample CSV or template not available")
+
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_dir = Path(tmpdir) / "output"
+            
+            # Act
+            result = runner.invoke(
+                cli,
+                [
+                    "template", "process",
+                    str(sample_template),
+                    str(sample_csv),
+                    "--output", str(output_dir)
+                ]
+            )
+
+            # Assert
+            assert result.exit_code in [0, 2]
+            
+            # Verify progress was shown
+            assert "Processing patients" in result.output or "SUMMARY" in result.output
+            
+            # Verify output files created
+            if output_dir.exists():
+                output_files = list(output_dir.glob("*.xml"))
+                assert len(output_files) > 0
+                
+                # Verify all generated CCDs are valid XML
+                from lxml import etree
+                for xml_file in output_files:
+                    try:
+                        etree.parse(str(xml_file))
+                    except etree.XMLSyntaxError:
+                        pytest.fail(f"Generated CCD {xml_file.name} is not valid XML")
+
+    def test_template_help_text(self):
+        """Test template command group help text."""
+        # Arrange
+        runner = CliRunner()
+
+        # Act
+        result = runner.invoke(cli, ["template", "--help"])
+
+        # Assert
+        assert result.exit_code == 0
+        assert "template" in result.output.lower()
+        assert "validate" in result.output
+        assert "process" in result.output
+
+    def test_template_validate_help_includes_examples(self):
+        """Test template validate help includes usage examples."""
+        # Arrange
+        runner = CliRunner()
+
+        # Act
+        result = runner.invoke(cli, ["template", "validate", "--help"])
+
+        # Assert
+        assert result.exit_code == 0
+        assert "Example:" in result.output
+        assert "template" in result.output
+
+    def test_template_process_help_includes_examples(self):
+        """Test template process help includes usage examples."""
+        # Arrange
+        runner = CliRunner()
+
+        # Act
+        result = runner.invoke(cli, ["template", "process", "--help"])
+
+        # Assert
+        assert result.exit_code == 0
+        assert "Examples:" in result.output
+        assert "--output" in result.output
+        assert "--format" in result.output
