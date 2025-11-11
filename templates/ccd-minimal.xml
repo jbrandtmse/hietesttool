@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 
+  HL7 CCDA R2.1 Minimal Template for IHE Test Utility
+  
+  This is the SIMPLEST valid CCDA document structure.
+  Use this template when you only need basic patient demographics without
+  clinical sections (medications, problems, allergies).
+  
+  REQUIRED PLACEHOLDERS (must have values):
+  - {{patient_id}}        - Patient identifier
+  - {{patient_id_oid}}    - OID for patient ID domain (e.g., 2.16.840.1.113883.4.357)
+  - {{first_name}}        - Patient first/given name
+  - {{last_name}}         - Patient family/last name
+  - {{dob}}               - Date of birth (auto-formatted to HL7 YYYYMMDD)
+  - {{gender}}            - Gender code: M (Male), F (Female), O (Other), U (Unknown)
+  - {{document_id}}       - Unique document UUID (auto-generated)
+  - {{creation_timestamp}} - Document creation timestamp (auto-generated, HL7 YYYYMMDDHHmmss)
+  
+  AUTOMATIC PROCESSING:
+  - Dates are automatically formatted to HL7 YYYYMMDD format
+  - XML special characters (&, <, >, ", ') are automatically escaped
+  - OIDs are validated for proper format
+  
+  ACCEPTANCE CRITERIA COVERAGE:
+  - AC 5: Minimal CCD template for simplest use case
+  
+  TO USE:
+  1. Prepare a CSV file with required patient fields
+  2. Use CCDPersonalizer to personalize this template
+  3. Result will be a valid minimal CCDA document
+  
+  FOR MORE FEATURES:
+  Use templates/ccd-template.xml for medications, problems, and allergies sections.
+-->
+<ClinicalDocument xmlns="urn:hl7-org:v3" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  
+  <!-- US Realm Code -->
+  <realmCode code="US"/>
+  
+  <!-- Document Type ID (Fixed for CDA R2) -->
+  <typeId root="2.16.840.1.113883.1.3" extension="POCD_HD000040"/>
+  
+  <!-- Unique Document ID (Auto-generated UUID) -->
+  <id root="{{document_id}}"/>
+  
+  <!-- Document Code: CCD = "34133-9" (LOINC) -->
+  <code code="34133-9" 
+        codeSystem="2.16.840.1.113883.6.1" 
+        codeSystemName="LOINC" 
+        displayName="Summarization of Episode Note"/>
+  
+  <!-- Document Title -->
+  <title>Continuity of Care Document</title>
+  
+  <!-- Document Creation Time (Auto-generated timestamp) -->
+  <effectiveTime value="{{creation_timestamp}}"/>
+  
+  <!-- Confidentiality Code: N = Normal -->
+  <confidentialityCode code="N" codeSystem="2.16.840.1.113883.5.25"/>
+  
+  <!-- Language Code -->
+  <languageCode code="en-US"/>
+  
+  <!-- ========================================
+       PATIENT DEMOGRAPHICS (recordTarget)
+       Minimum required patient information
+       ======================================== -->
+  <recordTarget>
+    <patientRole>
+      <!-- Primary Patient ID (Required) -->
+      <id extension="{{patient_id}}" root="{{patient_id_oid}}"/>
+      
+      <!-- Patient Information -->
+      <patient>
+        <!-- Patient Name (Required) -->
+        <name use="L">
+          <given>{{first_name}}</given>
+          <family>{{last_name}}</family>
+        </name>
+        
+        <!-- Gender (Required): M, F, O, U -->
+        <administrativeGenderCode code="{{gender}}" codeSystem="2.16.840.1.113883.5.1"/>
+        
+        <!-- Date of Birth (Required) - Auto-formatted to HL7 YYYYMMDD -->
+        <birthTime value="{{dob}}"/>
+      </patient>
+    </patientRole>
+  </recordTarget>
+  
+  <!-- ========================================
+       DOCUMENT AUTHOR (Required)
+       ======================================== -->
+  <author>
+    <time value="{{creation_timestamp}}"/>
+    <assignedAuthor>
+      <id root="2.16.840.1.113883.4.6" extension="999999999"/>
+      <assignedPerson>
+        <name>
+          <given>Test</given>
+          <family>Provider</family>
+        </name>
+      </assignedPerson>
+    </assignedAuthor>
+  </author>
+  
+  <!-- ========================================
+       DOCUMENT CUSTODIAN (Required)
+       ======================================== -->
+  <custodian>
+    <assignedCustodian>
+      <representedCustodianOrganization>
+        <id root="2.16.840.1.113883.4.6" extension="999999999"/>
+        <name>IHE Test Utility Organization</name>
+        <telecom value="tel:555-555-5555" use="WP"/>
+        <addr>
+          <streetAddressLine>123 Test Street</streetAddressLine>
+          <city>Test City</city>
+          <state>TS</state>
+          <postalCode>00000</postalCode>
+        </addr>
+      </representedCustodianOrganization>
+    </assignedCustodian>
+  </custodian>
+  
+  <!-- ========================================
+       DOCUMENT BODY
+       Empty structured body (no clinical sections)
+       ======================================== -->
+  <component>
+    <structuredBody>
+      <!-- No clinical sections in minimal template -->
+      <!-- This is the simplest valid CCDA structure -->
+    </structuredBody>
+  </component>
+  
+</ClinicalDocument>

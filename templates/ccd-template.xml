@@ -1,0 +1,315 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 
+  HL7 CCDA R2.1 Comprehensive Template for IHE Test Utility
+  
+  This template includes common clinical sections for comprehensive care documentation.
+  All placeholders use {{field_name}} format and are automatically processed by the
+  Template Personalization Engine (Story 3.3).
+  
+  REQUIRED PLACEHOLDERS (must have values):
+  - {{patient_id}}        - Patient identifier
+  - {{patient_id_oid}}    - OID for patient ID domain (e.g., 2.16.840.1.113883.4.357)
+  - {{first_name}}        - Patient first/given name
+  - {{last_name}}         - Patient family/last name
+  - {{dob}}               - Date of birth (auto-formatted to HL7 YYYYMMDD)
+  - {{gender}}            - Gender code: M (Male), F (Female), O (Other), U (Unknown)
+  - {{document_id}}       - Unique document UUID (auto-generated)
+  - {{creation_timestamp}} - Document creation timestamp (auto-generated, HL7 YYYYMMDDHHmmss)
+  
+  OPTIONAL PLACEHOLDERS (will be empty if not provided):
+  - {{mrn}}               - Medical record number
+  - {{ssn}}               - Social security number (format: XXX-XX-XXXX)
+  - {{address}}           - Street address line
+  - {{city}}              - City name
+  - {{state}}             - State code (2-letter)
+  - {{zip}}               - ZIP/Postal code
+  - {{phone}}             - Phone number (format: XXX-XXX-XXXX)
+  - {{email}}             - Email address
+  
+  AUTOMATIC PROCESSING:
+  - Dates are automatically formatted to HL7 YYYYMMDD format
+  - XML special characters (&, <, >, ", ') are automatically escaped
+  - OIDs are validated for proper format
+  
+  ACCEPTANCE CRITERIA COVERAGE:
+  - AC 1: Sample CCD template in templates/ccd-template.xml
+  - AC 2: Includes common clinical sections (demographics, medications, problems, allergies)
+  - AC 3: All required placeholders clearly marked and documented
+  - AC 4: Follows HL7 CCDA R2.1 structure and namespaces
+-->
+<ClinicalDocument xmlns="urn:hl7-org:v3" 
+                  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                  xmlns:sdtc="urn:hl7-org:sdtc">
+  
+  <!-- US Realm Code -->
+  <realmCode code="US"/>
+  
+  <!-- Document Type ID (Fixed for CDA R2) -->
+  <typeId root="2.16.840.1.113883.1.3" extension="POCD_HD000040"/>
+  
+  <!-- Document Template ID (Continuity of Care Document - CCD) -->
+  <templateId root="2.16.840.1.113883.10.20.22.1.2" extension="2015-08-01"/>
+  
+  <!-- Unique Document ID (Auto-generated UUID) -->
+  <id root="{{document_id}}"/>
+  
+  <!-- Document Code: CCD = "34133-9" (LOINC) -->
+  <code code="34133-9" 
+        codeSystem="2.16.840.1.113883.6.1" 
+        codeSystemName="LOINC" 
+        displayName="Summarization of Episode Note"/>
+  
+  <!-- Document Title -->
+  <title>Continuity of Care Document</title>
+  
+  <!-- Document Creation Time (Auto-generated timestamp) -->
+  <effectiveTime value="{{creation_timestamp}}"/>
+  
+  <!-- Confidentiality Code: N = Normal -->
+  <confidentialityCode code="N" 
+                       codeSystem="2.16.840.1.113883.5.25" 
+                       displayName="Normal"/>
+  
+  <!-- Language Code -->
+  <languageCode code="en-US"/>
+  
+  <!-- ========================================
+       PATIENT DEMOGRAPHICS (recordTarget)
+       ======================================== -->
+  <recordTarget>
+    <patientRole>
+      <!-- Primary Patient ID (Required) -->
+      <id extension="{{patient_id}}" root="{{patient_id_oid}}"/>
+      
+      <!-- Medical Record Number (Optional) -->
+      <!-- Uncomment if MRN is available: <id extension="{{mrn}}" root="2.16.840.1.113883.4.1" assigningAuthorityName="Medical Record Number"/> -->
+      
+      <!-- Social Security Number (Optional) -->
+      <!-- Uncomment if SSN is available: <id extension="{{ssn}}" root="2.16.840.1.113883.4.1" assigningAuthorityName="Social Security Number"/> -->
+      
+      <!-- Patient Address (Optional - home address) -->
+      <addr use="HP">
+        <streetAddressLine>{{address}}</streetAddressLine>
+        <city>{{city}}</city>
+        <state>{{state}}</state>
+        <postalCode>{{zip}}</postalCode>
+        <country>US</country>
+      </addr>
+      
+      <!-- Patient Phone (Optional - home phone) -->
+      <telecom value="tel:{{phone}}" use="HP"/>
+      
+      <!-- Patient Email (Optional) -->
+      <telecom value="mailto:{{email}}" use="HP"/>
+      
+      <!-- Patient Information -->
+      <patient>
+        <!-- Patient Name (Required) -->
+        <name use="L">
+          <given>{{first_name}}</given>
+          <family>{{last_name}}</family>
+        </name>
+        
+        <!-- Gender (Required): M, F, O, U -->
+        <administrativeGenderCode code="{{gender}}" 
+                                  codeSystem="2.16.840.1.113883.5.1" 
+                                  displayName="Administrative Gender"/>
+        
+        <!-- Date of Birth (Required) - Auto-formatted to HL7 YYYYMMDD -->
+        <birthTime value="{{dob}}"/>
+        
+        <!-- Marital Status (Optional) -->
+        <!-- <maritalStatusCode code="M" codeSystem="2.16.840.1.113883.5.2" displayName="Married"/> -->
+        
+        <!-- Race (Optional) -->
+        <!-- <raceCode code="2106-3" codeSystem="2.16.840.1.113883.6.238" displayName="White"/> -->
+        
+        <!-- Ethnicity (Optional) -->
+        <!-- <ethnicGroupCode code="2186-5" codeSystem="2.16.840.1.113883.6.238" displayName="Not Hispanic or Latino"/> -->
+        
+        <!-- Preferred Language (Optional) -->
+        <languageCommunication>
+          <languageCode code="en"/>
+          <preferenceInd value="true"/>
+        </languageCommunication>
+      </patient>
+    </patientRole>
+  </recordTarget>
+  
+  <!-- ========================================
+       DOCUMENT AUTHOR
+       ======================================== -->
+  <author>
+    <time value="{{creation_timestamp}}"/>
+    <assignedAuthor>
+      <id root="2.16.840.1.113883.4.6" extension="999999999"/>
+      <addr>
+        <streetAddressLine>IHE Test Utility</streetAddressLine>
+        <city>Test City</city>
+        <state>TS</state>
+        <postalCode>00000</postalCode>
+      </addr>
+      <telecom value="tel:555-555-5555" use="WP"/>
+      <assignedPerson>
+        <name>
+          <given>Test</given>
+          <family>Provider</family>
+        </name>
+      </assignedPerson>
+    </assignedAuthor>
+  </author>
+  
+  <!-- ========================================
+       DOCUMENT CUSTODIAN
+       ======================================== -->
+  <custodian>
+    <assignedCustodian>
+      <representedCustodianOrganization>
+        <id root="2.16.840.1.113883.4.6" extension="999999999"/>
+        <name>IHE Test Utility Organization</name>
+        <telecom value="tel:555-555-5555" use="WP"/>
+        <addr>
+          <streetAddressLine>123 Test Street</streetAddressLine>
+          <city>Test City</city>
+          <state>TS</state>
+          <postalCode>00000</postalCode>
+        </addr>
+      </representedCustodianOrganization>
+    </assignedCustodian>
+  </custodian>
+  
+  <!-- ========================================
+       DOCUMENT BODY - CLINICAL SECTIONS
+       ======================================== -->
+  <component>
+    <structuredBody>
+      
+      <!-- ========================================
+           ALLERGIES AND INTOLERANCES SECTION
+           LOINC: 48765-2
+           AC 2: Common clinical section
+           ======================================== -->
+      <component>
+        <section>
+          <templateId root="2.16.840.1.113883.10.20.22.2.6.1" extension="2015-08-01"/>
+          <code code="48765-2" 
+                codeSystem="2.16.840.1.113883.6.1" 
+                codeSystemName="LOINC" 
+                displayName="Allergies, Adverse Reactions, Alerts"/>
+          <title>Allergies and Intolerances</title>
+          <text>
+            <paragraph>No known allergies.</paragraph>
+          </text>
+          <!-- Entry templates for specific allergies would go here in production -->
+          <!-- This example shows structure without specific allergy data -->
+        </section>
+      </component>
+      
+      <!-- ========================================
+           MEDICATIONS SECTION
+           LOINC: 10160-0
+           AC 2: Common clinical section
+           ======================================== -->
+      <component>
+        <section>
+          <templateId root="2.16.840.1.113883.10.20.22.2.1.1" extension="2014-06-09"/>
+          <code code="10160-0" 
+                codeSystem="2.16.840.1.113883.6.1" 
+                codeSystemName="LOINC" 
+                displayName="History of Medication Use"/>
+          <title>Medications</title>
+          <text>
+            <paragraph>No current medications.</paragraph>
+          </text>
+          <!-- Entry templates for specific medications would go here in production -->
+          <!-- Example structure for medication entry:
+          <entry typeCode="DRIV">
+            <substanceAdministration classCode="SBADM" moodCode="EVN">
+              <templateId root="2.16.840.1.113883.10.20.22.4.16"/>
+              <id root="..."/>
+              <statusCode code="active"/>
+              <effectiveTime xsi:type="IVL_TS">
+                <low value="20250101"/>
+              </effectiveTime>
+              <consumable>
+                <manufacturedProduct>
+                  <manufacturedMaterial>
+                    <code code="..." codeSystem="2.16.840.1.113883.6.88" displayName="Medication Name">
+                      <originalText>Medication Name</originalText>
+                    </code>
+                  </manufacturedMaterial>
+                </manufacturedProduct>
+              </consumable>
+            </substanceAdministration>
+          </entry>
+          -->
+        </section>
+      </component>
+      
+      <!-- ========================================
+           PROBLEM LIST SECTION
+           LOINC: 11450-4
+           AC 2: Common clinical section
+           ======================================== -->
+      <component>
+        <section>
+          <templateId root="2.16.840.1.113883.10.20.22.2.5.1" extension="2015-08-01"/>
+          <code code="11450-4" 
+                codeSystem="2.16.840.1.113883.6.1" 
+                codeSystemName="LOINC" 
+                displayName="Problem List"/>
+          <title>Problems</title>
+          <text>
+            <paragraph>No active problems.</paragraph>
+          </text>
+          <!-- Entry templates for specific problems would go here in production -->
+          <!-- Example structure for problem entry:
+          <entry typeCode="DRIV">
+            <act classCode="ACT" moodCode="EVN">
+              <templateId root="2.16.840.1.113883.10.20.22.4.3"/>
+              <id root="..."/>
+              <code code="CONC" codeSystem="2.16.840.1.113883.5.6"/>
+              <statusCode code="active"/>
+              <effectiveTime>
+                <low value="20250101"/>
+              </effectiveTime>
+              <entryRelationship typeCode="SUBJ">
+                <observation classCode="OBS" moodCode="EVN">
+                  <templateId root="2.16.840.1.113883.10.20.22.4.4"/>
+                  <id root="..."/>
+                  <code code="..." codeSystem="2.16.840.1.113883.6.96" displayName="Problem Name">
+                    <originalText>Problem Description</originalText>
+                  </code>
+                  <statusCode code="completed"/>
+                </observation>
+              </entryRelationship>
+            </act>
+          </entry>
+          -->
+        </section>
+      </component>
+      
+      <!-- ========================================
+           PROCEDURES SECTION (Optional)
+           LOINC: 47519-4
+           AC 8: Example of custom section
+           ======================================== -->
+      <component>
+        <section>
+          <templateId root="2.16.840.1.113883.10.20.22.2.7.1" extension="2014-06-09"/>
+          <code code="47519-4" 
+                codeSystem="2.16.840.1.113883.6.1" 
+                codeSystemName="LOINC" 
+                displayName="History of Procedures"/>
+          <title>Procedures</title>
+          <text>
+            <paragraph>No procedures on record.</paragraph>
+          </text>
+          <!-- Entry templates for specific procedures would go here in production -->
+        </section>
+      </component>
+      
+    </structuredBody>
+  </component>
+  
+</ClinicalDocument>
