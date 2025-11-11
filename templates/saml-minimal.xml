@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Minimal SAML 2.0 Assertion Template
+  
+  This template provides the bare minimum required elements for a valid SAML 2.0
+  assertion. Use this for simple authentication scenarios or testing.
+  
+  Required Placeholders:
+    - {{assertion_id}}: Unique assertion ID (auto-generated if not provided)
+    - {{issue_instant}}: Assertion issue timestamp (auto-generated if not provided)
+    - {{issuer}}: Identity provider identifier
+    - {{subject}}: Subject/user identifier
+    - {{audience}}: Intended audience (service provider URL)
+    - {{not_before}}: Validity start time (auto-generated if not provided)
+    - {{not_on_or_after}}: Validity end time (auto-generated if not provided)
+-->
+<saml:Assertion xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion"
+                ID="{{assertion_id}}"
+                IssueInstant="{{issue_instant}}"
+                Version="2.0">
+    
+    <saml:Issuer>{{issuer}}</saml:Issuer>
+    
+    <saml:Subject>
+        <saml:NameID Format="urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified">
+            {{subject}}
+        </saml:NameID>
+        <saml:SubjectConfirmation Method="urn:oasis:names:tc:SAML:2.0:cm:bearer">
+            <saml:SubjectConfirmationData NotOnOrAfter="{{not_on_or_after}}" />
+        </saml:SubjectConfirmation>
+    </saml:Subject>
+    
+    <saml:Conditions NotBefore="{{not_before}}" 
+                     NotOnOrAfter="{{not_on_or_after}}">
+        <saml:AudienceRestriction>
+            <saml:Audience>{{audience}}</saml:Audience>
+        </saml:AudienceRestriction>
+    </saml:Conditions>
+    
+    <saml:AuthnStatement AuthnInstant="{{issue_instant}}" 
+                         SessionIndex="{{assertion_id}}">
+        <saml:AuthnContext>
+            <saml:AuthnContextClassRef>
+                urn:oasis:names:tc:SAML:2.0:ac:classes:unspecified
+            </saml:AuthnContextClassRef>
+        </saml:AuthnContext>
+    </saml:AuthnStatement>
+    
+</saml:Assertion>

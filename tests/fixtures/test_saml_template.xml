@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Test SAML Template for Unit Tests -->
+<saml:Assertion xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion"
+                ID="{{assertion_id}}"
+                IssueInstant="{{issue_instant}}"
+                Version="2.0">
+    
+    <saml:Issuer>{{issuer}}</saml:Issuer>
+    
+    <saml:Subject>
+        <saml:NameID Format="urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified">
+            {{subject}}
+        </saml:NameID>
+        <saml:SubjectConfirmation Method="urn:oasis:names:tc:SAML:2.0:cm:bearer">
+            <saml:SubjectConfirmationData NotOnOrAfter="{{not_on_or_after}}" />
+        </saml:SubjectConfirmation>
+    </saml:Subject>
+    
+    <saml:Conditions NotBefore="{{not_before}}" 
+                     NotOnOrAfter="{{not_on_or_after}}">
+        <saml:AudienceRestriction>
+            <saml:Audience>{{audience}}</saml:Audience>
+        </saml:AudienceRestriction>
+    </saml:Conditions>
+    
+    <saml:AuthnStatement AuthnInstant="{{issue_instant}}" 
+                         SessionIndex="{{assertion_id}}">
+        <saml:AuthnContext>
+            <saml:AuthnContextClassRef>
+                urn:oasis:names:tc:SAML:2.0:ac:classes:unspecified
+            </saml:AuthnContextClassRef>
+        </saml:AuthnContext>
+    </saml:AuthnStatement>
+    
+    <saml:AttributeStatement>
+        <saml:Attribute Name="username">
+            <saml:AttributeValue>{{attr_username}}</saml:AttributeValue>
+        </saml:Attribute>
+        <saml:Attribute Name="role">
+            <saml:AttributeValue>{{attr_role}}</saml:AttributeValue>
+        </saml:Attribute>
+    </saml:AttributeStatement>
+    
+</saml:Assertion>

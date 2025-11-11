@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SAML 2.0 Assertion Template
+  
+  This template provides a complete SAML 2.0 assertion structure for healthcare
+  IHE transactions. Placeholders use double braces format.
+  
+  Required Placeholders:
+    - {{assertion_id}}: Unique assertion ID (auto-generated if not provided)
+    - {{issue_instant}}: Assertion issue timestamp (auto-generated if not provided)
+    - {{issuer}}: Identity provider identifier
+    - {{subject}}: Subject/user identifier
+    - {{audience}}: Intended audience (service provider URL)
+    - {{not_before}}: Validity start time (auto-generated if not provided)
+    - {{not_on_or_after}}: Validity end time (auto-generated if not provided)
+  
+  Optional Placeholders:
+    - {{attr_username}}: Username attribute
+    - {{attr_role}}: User role attribute
+    - {{attr_organization}}: Organization attribute
+    - {{attr_purpose_of_use}}: Purpose of use code
+-->
+<saml:Assertion xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion"
+                ID="{{assertion_id}}"
+                IssueInstant="{{issue_instant}}"
+                Version="2.0">
+    
+    <!-- Issuer: Identity Provider that issued this assertion -->
+    <saml:Issuer>{{issuer}}</saml:Issuer>
+    
+    <!-- Subject: The authenticated user/entity -->
+    <saml:Subject>
+        <saml:NameID Format="urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified">
+            {{subject}}
+        </saml:NameID>
+        <saml:SubjectConfirmation Method="urn:oasis:names:tc:SAML:2.0:cm:bearer">
+            <saml:SubjectConfirmationData NotOnOrAfter="{{not_on_or_after}}" />
+        </saml:SubjectConfirmation>
+    </saml:Subject>
+    
+    <!-- Conditions: Validity period and audience restriction -->
+    <saml:Conditions NotBefore="{{not_before}}" 
+                     NotOnOrAfter="{{not_on_or_after}}">
+        <saml:AudienceRestriction>
+            <saml:Audience>{{audience}}</saml:Audience>
+        </saml:AudienceRestriction>
+    </saml:Conditions>
+    
+    <!-- AuthnStatement: Authentication context -->
+    <saml:AuthnStatement AuthnInstant="{{issue_instant}}" 
+                         SessionIndex="{{assertion_id}}">
+        <saml:AuthnContext>
+            <saml:AuthnContextClassRef>
+                urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport
+            </saml:AuthnContextClassRef>
+        </saml:AuthnContext>
+    </saml:AuthnStatement>
+    
+    <!-- AttributeStatement: User attributes for healthcare context -->
+    <saml:AttributeStatement>
+        <saml:Attribute Name="username" 
+                        NameFormat="urn:oasis:names:tc:SAML:2.0:attrname-format:basic">
+            <saml:AttributeValue>{{attr_username}}</saml:AttributeValue>
+        </saml:Attribute>
+        <saml:Attribute Name="role" 
+                        NameFormat="urn:oasis:names:tc:SAML:2.0:attrname-format:basic">
+            <saml:AttributeValue>{{attr_role}}</saml:AttributeValue>
+        </saml:Attribute>
+        <saml:Attribute Name="organization" 
+                        NameFormat="urn:oasis:names:tc:SAML:2.0:attrname-format:basic">
+            <saml:AttributeValue>{{attr_organization}}</saml:AttributeValue>
+        </saml:Attribute>
+        <saml:Attribute Name="purposeOfUse" 
+                        NameFormat="urn:oasis:names:tc:SAML:2.0:attrname-format:basic">
+            <saml:AttributeValue>{{attr_purpose_of_use}}</saml:AttributeValue>
+        </saml:Attribute>
+    </saml:AttributeStatement>
+    
+</saml:Assertion>

@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SAML 2.0 Assertion Template with Extensive Attributes
+  
+  This template provides a comprehensive SAML 2.0 assertion with extensive
+  attribute statements for healthcare interoperability scenarios (IHE, NHIN).
+  
+  Required Placeholders:
+    - {{assertion_id}}: Unique assertion ID (auto-generated if not provided)
+    - {{issue_instant}}: Assertion issue timestamp (auto-generated if not provided)
+    - {{issuer}}: Identity provider identifier
+    - {{subject}}: Subject/user identifier
+    - {{audience}}: Intended audience (service provider URL)
+    - {{not_before}}: Validity start time (auto-generated if not provided)
+    - {{not_on_or_after}}: Validity end time (auto-generated if not provided)
+  
+  Healthcare Attribute Placeholders:
+    - {{attr_username}}: Username/login ID
+    - {{attr_given_name}}: First name
+    - {{attr_family_name}}: Last name
+    - {{attr_email}}: Email address
+    - {{attr_role}}: User role (physician, nurse, admin, etc.)
+    - {{attr_organization}}: Organization name
+    - {{attr_organization_id}}: Organization identifier
+    - {{attr_facility}}: Facility/department name
+    - {{attr_purpose_of_use}}: Purpose of use code (treatment, payment, operations)
+    - {{attr_npi}}: National Provider Identifier
+    - {{attr_specialty}}: Medical specialty
+-->
+<saml:Assertion xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion"
+                ID="{{assertion_id}}"
+                IssueInstant="{{issue_instant}}"
+                Version="2.0">
+    
+    <saml:Issuer>{{issuer}}</saml:Issuer>
+    
+    <saml:Subject>
+        <saml:NameID Format="urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified">
+            {{subject}}
+        </saml:NameID>
+        <saml:SubjectConfirmation Method="urn:oasis:names:tc:SAML:2.0:cm:bearer">
+            <saml:SubjectConfirmationData NotOnOrAfter="{{not_on_or_after}}" />
+        </saml:SubjectConfirmation>
+    </saml:Subject>
+    
+    <saml:Conditions NotBefore="{{not_before}}" 
+                     NotOnOrAfter="{{not_on_or_after}}">
+        <saml:AudienceRestriction>
+            <saml:Audience>{{audience}}</saml:Audience>
+        </saml:AudienceRestriction>
+    </saml:Conditions>
+    
+    <saml:AuthnStatement AuthnInstant="{{issue_instant}}" 
+                         SessionIndex="{{assertion_id}}">
+        <saml:AuthnContext>
+            <saml:AuthnContextClassRef>
+                urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport
+            </saml:AuthnContextClassRef>
+        </saml:AuthnContext>
+    </saml:AuthnStatement>
+    
+    <!-- Extensive AttributeStatement for healthcare context -->
+    <saml:AttributeStatement>
+        <!-- User Identity Attributes -->
+        <saml:Attribute Name="username" 
+                        NameFormat="urn:oasis:names:tc:SAML:2.0:attrname-format:basic">
+            <saml:AttributeValue>{{attr_username}}</saml:AttributeValue>
+        </saml:Attribute>
+        <saml:Attribute Name="givenName" 
+                        NameFormat="urn:oasis:names:tc:SAML:2.0:attrname-format:basic">
+            <saml:AttributeValue>{{attr_given_name}}</saml:AttributeValue>
+        </saml:Attribute>
+        <saml:Attribute Name="familyName" 
+                        NameFormat="urn:oasis:names:tc:SAML:2.0:attrname-format:basic">
+            <saml:AttributeValue>{{attr_family_name}}</saml:AttributeValue>
+        </saml:Attribute>
+        <saml:Attribute Name="email" 
+                        NameFormat="urn:oasis:names:tc:SAML:2.0:attrname-format:basic">
+            <saml:AttributeValue>{{attr_email}}</saml:AttributeValue>
+        </saml:Attribute>
+        
+        <!-- Role and Authorization Attributes -->
+        <saml:Attribute Name="role" 
+                        NameFormat="urn:oasis:names:tc:SAML:2.0:attrname-format:basic">
+            <saml:AttributeValue>{{attr_role}}</saml:AttributeValue>
+        </saml:Attribute>
+        
+        <!-- Organization Attributes -->
+        <saml:Attribute Name="organization" 
+                        NameFormat="urn:oasis:names:tc:SAML:2.0:attrname-format:basic">
+            <saml:AttributeValue>{{attr_organization}}</saml:AttributeValue>
+        </saml:Attribute>
+        <saml:Attribute Name="organizationId" 
+                        NameFormat="urn:oasis:names:tc:SAML:2.0:attrname-format:basic">
+            <saml:AttributeValue>{{attr_organization_id}}</saml:AttributeValue>
+        </saml:Attribute>
+        <saml:Attribute Name="facility" 
+                        NameFormat="urn:oasis:names:tc:SAML:2.0:attrname-format:basic">
+            <saml:AttributeValue>{{attr_facility}}</saml:AttributeValue>
+        </saml:Attribute>
+        
+        <!-- Purpose of Use (NHIN/IHE) -->
+        <saml:Attribute Name="purposeOfUse" 
+                        NameFormat="urn:oasis:names:tc:SAML:2.0:attrname-format:basic">
+            <saml:AttributeValue>{{attr_purpose_of_use}}</saml:AttributeValue>
+        </saml:Attribute>
+        
+        <!-- Healthcare Provider Identifiers -->
+        <saml:Attribute Name="npi" 
+                        NameFormat="urn:oasis:names:tc:SAML:2.0:attrname-format:basic">
+            <saml:AttributeValue>{{attr_npi}}</saml:AttributeValue>
+        </saml:Attribute>
+        <saml:Attribute Name="specialty" 
+                        NameFormat="urn:oasis:names:tc:SAML:2.0:attrname-format:basic">
+            <saml:AttributeValue>{{attr_specialty}}</saml:AttributeValue>
+        </saml:Attribute>
+    </saml:AttributeStatement>
+    
+</saml:Assertion>
