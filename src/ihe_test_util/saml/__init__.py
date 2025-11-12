@@ -39,6 +39,7 @@ from ihe_test_util.saml.programmatic_generator import (
 )
 from ihe_test_util.saml.signer import SAMLSigner
 from ihe_test_util.saml.verifier import SAMLVerifier
+from ihe_test_util.saml.ws_security import WSSecurityHeaderBuilder
 
 __all__ = [
     # Spike generator (legacy)
@@ -67,4 +68,6 @@ __all__ = [
     # XML Signing (Story 4.4)
     "SAMLSigner",
     "SAMLVerifier",
+    # WS-Security header construction (Story 4.5)
+    "WSSecurityHeaderBuilder",
 ]

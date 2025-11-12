@@ -362,3 +362,309 @@ def test_saml_template_validity_periods(standard_template_path):
         # Should be valid XML
         from lxml import etree
         etree.fromstring(saml_xml.encode("utf-8"))
+
+
+# WS-Security Integration Tests (Story 4.5)
+
+
+def test_ws_security_end_to_end_workflow():
+    """Test complete workflow: generate SAML → sign → embed in WS-Security → create SOAP envelope."""
+    from ihe_test_util.saml.programmatic_generator import SAMLProgrammaticGenerator
+    from ihe_test_util.saml.signer import SAMLSigner
+    from ihe_test_util.saml.ws_security import WSSecurityHeaderBuilder
+    from ihe_test_util.saml.certificate_manager import load_certificate
+    from lxml import etree
+    
+    # Generate SAML assertion
+    generator = SAMLProgrammaticGenerator()
+    assertion = generator.generate(
+        subject="dr.smith@hospital.org",
+        issuer="https://idp.hospital.org",
+        audience="https://pix.regional-hie.org"
+    )
+    
+    # Sign assertion
+    cert_path = Path("tests/fixtures/test_cert.pem")
+    key_path = Path("tests/fixtures/test_key.pem")
+    cert_bundle = load_certificate(cert_path, key_path=key_path)
+    signer = SAMLSigner(cert_bundle)
+    signed_assertion = signer.sign_assertion(assertion)
+    
+    # Build WS-Security header
+    builder = WSSecurityHeaderBuilder()
+    ws_security = builder.build_ws_security_header(signed_assertion)
+    
+    # Verify WS-Security header structure
+    assert ws_security is not None
+    assert "Security" in ws_security.tag
+    
+    # Create SOAP envelope
+    body = etree.Element("TestBody")
+    envelope = builder.embed_in_soap_envelope(body, ws_security)
+    
+    # Verify envelope structure
+    assert "Envelope" in envelope.tag
+    
+    # Verify can serialize and parse
+    envelope_str = etree.tostring(envelope, encoding='unicode')
+    parsed = etree.fromstring(envelope_str.encode('utf-8'))
+    assert parsed is not None
+
+
+@pytest.mark.skip(reason="Template workflow produces XML strings, not SAMLAssertion models. No XML-to-model parser exists. Use programmatic generation for WS-Security (tested in test_ws_security_with_programmatic_saml).")
+def test_ws_security_with_template_based_saml(standard_template_path):
+    """Test WS-Security header with template-based SAML.
+    
+    NOTE: This test is skipped because SAMLTemplatePersonalizer.personalize() returns
+    XML strings, not SAMLAssertion model objects. SAMLSigner requires model objects.
+    There is no XML-to-model parser in the codebase.
+    
+    The proper workflows are:
+    1. Template → XML string (tested in template tests)
+    2. Programmatic → Model → Sign → WS-Security (tested in test_ws_security_with_programmatic_saml)
+    
+    This test attempted to call non-existent method: personalizer.personalize_to_model()
+    """
+    from ihe_test_util.saml.template_loader import SAMLTemplatePersonalizer
+    from ihe_test_util.saml.signer import SAMLSigner
+    from ihe_test_util.saml.ws_security import WSSecurityHeaderBuilder
+    from ihe_test_util.saml.certificate_manager import load_certificate
+    from lxml import etree
+    
+    # This test is skipped - see docstring for explanation
+    pass
+
+
+def test_ws_security_with_programmatic_saml():
+    """Test WS-Security header with programmatic SAML."""
+    from ihe_test_util.saml.programmatic_generator import SAMLProgrammaticGenerator
+    from ihe_test_util.saml.signer import SAMLSigner
+    from ihe_test_util.saml.ws_security import WSSecurityHeaderBuilder
+    from ihe_test_util.saml.certificate_manager import load_certificate
+    from lxml import etree
+    
+    # Generate SAML programmatically
+    generator = SAMLProgrammaticGenerator()
+    assertion = generator.generate(
+        subject="integration-user@hospital.org",
+        issuer="https://idp.hospital.org",
+        audience="https://pix-manager.hie.org"
+    )
+    
+    # Sign assertion
+    cert_path = Path("tests/fixtures/test_cert.pem")
+    key_path = Path("tests/fixtures/test_key.pem")
+    cert_bundle = load_certificate(cert_path, key_path=key_path)
+    signer = SAMLSigner(cert_bundle)
+    signed_assertion = signer.sign_assertion(assertion)
+    
+    # Build WS-Security header
+    builder = WSSecurityHeaderBuilder()
+    ws_security = builder.build_ws_security_header(signed_assertion)
+    
+    # Validate header
+    assert builder.validate_ws_security_header(ws_security) is True
+
+
+def test_complete_pix_add_soap_envelope_workflow():
+    """Test complete PIX Add workflow: signed SAML → WS-Security header → SOAP envelope."""
+    from ihe_test_util.saml.programmatic_generator import SAMLProgrammaticGenerator
+    from ihe_test_util.saml.signer import SAMLSigner
+    from ihe_test_util.saml.ws_security import WSSecurityHeaderBuilder
+    from ihe_test_util.saml.certificate_manager import load_certificate
+    from lxml import etree
+    
+    # Generate and sign SAML
+    generator = SAMLProgrammaticGenerator()
+    assertion = generator.generate(
+        subject="integration-user@hospital.org",
+        issuer="https://idp.hospital.org",
+        audience="https://pix.regional-hie.org"
+    )
+    
+    cert_path = Path("tests/fixtures/test_cert.pem")
+    key_path = Path("tests/fixtures/test_key.pem")
+    cert_bundle = load_certificate(cert_path, key_path=key_path)
+    signer = SAMLSigner(cert_bundle)
+    signed_assertion = signer.sign_assertion(assertion)
+    
+    # Create PIX Add message (dummy)
+    pix_message = etree.Element("PRPA_IN201301UV02")
+    pix_message.text = "PIX Add message content"
+    
+    # Create complete SOAP envelope
+    builder = WSSecurityHeaderBuilder()
+    envelope_str = builder.create_pix_add_soap_envelope(
+        signed_assertion,
+        pix_message,
+        "http://pix.example.com/pix/add"
+    )
+    
+    # Verify envelope is valid XML
+    parsed = etree.fromstring(envelope_str.encode('utf-8'))
+    assert parsed is not None
+    
+    # Verify structure
+    assert "Envelope" in parsed.tag
+    
+    # Verify WS-Addressing action for PIX Add
+    ns = {'wsa': 'http://www.w3.org/2005/08/addressing'}
+    action = parsed.find(".//wsa:Action", namespaces=ns)
+    assert action is not None
+    assert action.text == "urn:hl7-org:v3:PRPA_IN201301UV02"
+    
+    # Verify WS-Security header present
+    ns_wsse = {'wsse': 'http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd'}
+    security = parsed.find(".//wsse:Security", namespaces=ns_wsse)
+    assert security is not None
+
+
+def test_complete_iti41_soap_envelope_workflow():
+    """Test complete ITI-41 workflow: signed SAML → WS-Security header → SOAP envelope."""
+    from ihe_test_util.saml.programmatic_generator import SAMLProgrammaticGenerator
+    from ihe_test_util.saml.signer import SAMLSigner
+    from ihe_test_util.saml.ws_security import WSSecurityHeaderBuilder
+    from ihe_test_util.saml.certificate_manager import load_certificate
+    from lxml import etree
+    
+    # Generate and sign SAML
+    generator = SAMLProgrammaticGenerator()
+    assertion = generator.generate(
+        subject="dr.jane.smith@hospital.org",
+        issuer="https://idp.hospital.org",
+        audience="https://xds-repository.hie.org"
+    )
+    
+    cert_path = Path("tests/fixtures/test_cert.pem")
+    key_path = Path("tests/fixtures/test_key.pem")
+    cert_bundle = load_certificate(cert_path, key_path=key_path)
+    signer = SAMLSigner(cert_bundle)
+    signed_assertion = signer.sign_assertion(assertion)
+    
+    # Create ITI-41 request (dummy)
+    iti41_request = etree.Element("ProvideAndRegisterDocumentSetRequest")
+    iti41_request.text = "ITI-41 request content"
+    
+    # Create complete SOAP envelope
+    builder = WSSecurityHeaderBuilder()
+    envelope_str = builder.create_iti41_soap_envelope(
+        signed_assertion,
+        iti41_request,
+        "http://xds.example.com/iti41/submit"
+    )
+    
+    # Verify envelope is valid XML
+    parsed = etree.fromstring(envelope_str.encode('utf-8'))
+    assert parsed is not None
+    
+    # Verify structure
+    assert "Envelope" in parsed.tag
+    
+    # Verify WS-Addressing action for ITI-41
+    ns = {'wsa': 'http://www.w3.org/2005/08/addressing'}
+    action = parsed.find(".//wsa:Action", namespaces=ns)
+    assert action is not None
+    assert action.text == "urn:ihe:iti:2007:ProvideAndRegisterDocumentSet-b"
+    
+    # Verify WS-Security header present
+    ns_wsse = {'wsse': 'http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd'}
+    security = parsed.find(".//wsse:Security", namespaces=ns_wsse)
+    assert security is not None
+
+
+def test_ws_security_serialization_and_parsing():
+    """Test that WS-Security SOAP envelopes can be serialized and parsed correctly."""
+    from ihe_test_util.saml.programmatic_generator import SAMLProgrammaticGenerator
+    from ihe_test_util.saml.signer import SAMLSigner
+    from ihe_test_util.saml.ws_security import WSSecurityHeaderBuilder
+    from ihe_test_util.saml.certificate_manager import load_certificate
+    from lxml import etree
+    
+    # Generate and sign SAML
+    generator = SAMLProgrammaticGenerator()
+    assertion = generator.generate(
+        subject="test@example.com",
+        issuer="https://idp.example.com",
+        audience="https://sp.example.com"
+    )
+    
+    cert_path = Path("tests/fixtures/test_cert.pem")
+    key_path = Path("tests/fixtures/test_key.pem")
+    cert_bundle = load_certificate(cert_path, key_path=key_path)
+    signer = SAMLSigner(cert_bundle)
+    signed_assertion = signer.sign_assertion(assertion)
+    
+    # Create SOAP envelope
+    builder = WSSecurityHeaderBuilder()
+    ws_security = builder.build_ws_security_header(signed_assertion)
+    body = etree.Element("TestBody")
+    envelope = builder.embed_in_soap_envelope(body, ws_security)
+    
+    # Serialize
+    envelope_str = etree.tostring(envelope, encoding='unicode', pretty_print=True)
+    
+    # Parse back
+    parsed = etree.fromstring(envelope_str.encode('utf-8'))
+    
+    # Verify structure preserved
+    ns_soap = {'SOAP-ENV': 'http://www.w3.org/2003/05/soap-envelope'}
+    header = parsed.find(".//SOAP-ENV:Header", namespaces=ns_soap)
+    body_elem = parsed.find(".//SOAP-ENV:Body", namespaces=ns_soap)
+    
+    assert header is not None
+    assert body_elem is not None
+    
+    # Verify WS-Security still valid after round-trip
+    ns_wsse = {'wsse': 'http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd'}
+    security = header.find(".//wsse:Security", namespaces=ns_wsse)
+    assert security is not None
+    
+    # Validate header structure
+    assert builder.validate_ws_security_header(security) is True
+
+
+def test_ws_security_batch_processing():
+    """Test WS-Security header generation for batch processing scenario."""
+    from ihe_test_util.saml.programmatic_generator import SAMLProgrammaticGenerator
+    from ihe_test_util.saml.signer import SAMLSigner
+    from ihe_test_util.saml.ws_security import WSSecurityHeaderBuilder
+    from ihe_test_util.saml.certificate_manager import load_certificate
+    from lxml import etree
+    
+    # Load certificate once
+    cert_path = Path("tests/fixtures/test_cert.pem")
+    key_path = Path("tests/fixtures/test_key.pem")
+    cert_bundle = load_certificate(cert_path, key_path=key_path)
+    
+    # Create builder and signer once
+    generator = SAMLProgrammaticGenerator()
+    signer = SAMLSigner(cert_bundle)
+    builder = WSSecurityHeaderBuilder()
+    
+    # Process batch of 10 requests
+    envelopes = []
+    for i in range(10):
+        # Generate and sign SAML
+        assertion = generator.generate(
+            subject=f"user{i}@hospital.org",
+            issuer="https://idp.hospital.org",
+            audience="https://xds.hie.org"
+        )
+        signed_assertion = signer.sign_assertion(assertion)
+        
+        # Create SOAP envelope
+        body = etree.Element("TestBody")
+        body.text = f"Request {i}"
+        ws_security = builder.build_ws_security_header(signed_assertion)
+        envelope = builder.embed_in_soap_envelope(body, ws_security)
+        
+        envelopes.append(envelope)
+    
+    # Verify all envelopes created
+    assert len(envelopes) == 10
+    
+    # Verify each is valid
+    for envelope in envelopes:
+        envelope_str = etree.tostring(envelope, encoding='unicode')
+        parsed = etree.fromstring(envelope_str.encode('utf-8'))
+        assert parsed is not None
