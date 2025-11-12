@@ -1,16 +1,19 @@
-"""XML signing module using python-xmlsec.
+"""XML signing module using signxml library.
 
-This module provides functionality for signing SAML assertions and other XML
-documents using XML Signature (XMLDSig) with RSA-SHA256 and C14N canonicalization.
+This module provides functionality for signing SAML assertions using XML Signature
+(XMLDSig) with RSA-SHA256 and C14N canonicalization. Uses signxml library for
+pure Python implementation with zero compilation requirements.
 """
 
 import logging
-from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
-import xmlsec
-from cryptography import x509
 from lxml import etree
+from signxml import DigestAlgorithm, SignatureMethod, XMLSigner
+from signxml.exceptions import InvalidInput
+
+from ..models.saml import CertificateBundle, SAMLAssertion
+from ..utils.exceptions import CertificateLoadError
 
 logger = logging.getLogger(__name__)
 
@@ -18,142 +21,243 @@ logger = logging.getLogger(__name__)
 DS_NS = "http://www.w3.org/2000/09/xmldsig#"
 
 
-def sign_xml(
-    xml_element: etree._Element,
-    private_key_path: Path,
-    certificate: Optional[x509.Certificate] = None,
-    key_password: Optional[bytes] = None,
-) -> etree._Element:
-    """Sign XML element with RSA-SHA256 and embed signature.
-
-    This function signs an XML element (typically a SAML assertion) using
-    XML Signature (XMLDSig) with RSA-SHA256 algorithm and Exclusive C14N
-    canonicalization. The signature is embedded as a child element.
-
-    Args:
-        xml_element: XML element to sign (e.g., SAML Assertion)
-        private_key_path: Path to private key file (PEM format)
-        certificate: Optional X.509 certificate to embed in KeyInfo
-        key_password: Optional password for encrypted private key
-
-    Returns:
-        Signed XML element with embedded Signature element
-
-    Raises:
-        FileNotFoundError: If private key file does not exist
-        xmlsec.Error: If signing operation fails
-        ValueError: If XML element is invalid
+class SAMLSigner:
+    """Sign SAML assertions with XML digital signatures.
+    
+    This class provides methods to sign SAML 2.0 assertions using W3C XML Signature
+    with configurable signature algorithms (default RSA-SHA256) and C14N canonicalization.
+    Supports both single assertion signing and optimized batch signing.
+    
+    Attributes:
+        cert_bundle: Certificate bundle containing certificate and private key
+        signature_algorithm: Signature algorithm (RSA-SHA256, RSA-SHA512)
+        signer: XMLSigner instance configured with signature algorithm
+        
+    Example:
+        >>> from pathlib import Path
+        >>> from ihe_test_util.saml.certificate_manager import load_certificate
+        >>> from ihe_test_util.saml.programmatic_generator import SAMLProgrammaticGenerator
+        >>> 
+        >>> # Load certificate
+        >>> cert_bundle = load_certificate(Path("certs/saml.p12"), password=b"secret")
+        >>> 
+        >>> # Generate SAML assertion
+        >>> generator = SAMLProgrammaticGenerator()
+        >>> assertion = generator.generate(
+        ...     subject="user@example.com",
+        ...     issuer="https://idp.example.com",
+        ...     audience="https://sp.example.com"
+        ... )
+        >>> 
+        >>> # Sign assertion
+        >>> signer = SAMLSigner(cert_bundle)
+        >>> signed_assertion = signer.sign_assertion(assertion)
+        >>> assert "<ds:Signature" in signed_assertion.xml_content
     """
-    if not private_key_path.exists():
-        raise FileNotFoundError(f"Private key not found: {private_key_path}")
-
-    try:
-        # Initialize xmlsec library
-        xmlsec.enable_debug_trace(False)
+    
+    def __init__(
+        self,
+        cert_bundle: CertificateBundle,
+        signature_algorithm: str = "RSA-SHA256"
+    ) -> None:
+        """Initialize SAML signer with certificate bundle.
         
-        logger.info("Creating signature template for XML element")
+        Args:
+            cert_bundle: Certificate bundle containing certificate and private key
+            signature_algorithm: Signature algorithm (RSA-SHA256, RSA-SHA512)
+            
+        Raises:
+            CertificateLoadError: If certificate bundle is invalid or missing key
+            ValueError: If signature algorithm is unsupported
+            
+        Example:
+            >>> cert_bundle = load_certificate(Path("certs/saml.p12"), password=b"secret")
+            >>> signer = SAMLSigner(cert_bundle, signature_algorithm="RSA-SHA256")
+        """
+        # Validate certificate bundle
+        if not cert_bundle.certificate:
+            raise CertificateLoadError(
+                "Certificate bundle must contain a valid certificate. "
+                "Ensure certificate was loaded correctly."
+            )
         
-        # Create signature template using Exclusive C14N and RSA-SHA256
-        signature_node = xmlsec.template.create(
-            xml_element,
-            xmlsec.constants.TransformExclC14N,
-            xmlsec.constants.TransformRsaSha256,
+        if not cert_bundle.private_key:
+            raise CertificateLoadError(
+                "Certificate bundle must contain a private key for signing. "
+                "Ensure private key was loaded with certificate (use PKCS12 or provide key_path)."
+            )
+        
+        self.cert_bundle = cert_bundle
+        self.signature_algorithm = signature_algorithm
+        
+        # Map signature algorithm string to SignatureMethod enum
+        algorithm_map = {
+            "RSA-SHA256": SignatureMethod.RSA_SHA256,
+            "RSA-SHA512": SignatureMethod.RSA_SHA512,
+        }
+        
+        if signature_algorithm not in algorithm_map:
+            raise ValueError(
+                f"Unsupported signature algorithm: {signature_algorithm}. "
+                f"Supported algorithms: {', '.join(algorithm_map.keys())}"
+            )
+        
+        # Create XMLSigner with configured algorithm
+        self.signer = XMLSigner(
+            signature_algorithm=algorithm_map[signature_algorithm],
+            digest_algorithm=DigestAlgorithm.SHA256
         )
         
-        # Add signature node as second child (after Issuer in SAML)
-        # For SAML, signature should be after Issuer but before Subject
-        if len(xml_element) > 0:
-            xml_element.insert(1, signature_node)
-        else:
-            xml_element.append(signature_node)
+        logger.info(
+            f"SAMLSigner initialized: algorithm={signature_algorithm}, "
+            f"certificate={cert_bundle.info.subject}"
+        )
+    
+    def sign_assertion(self, saml_assertion: SAMLAssertion) -> SAMLAssertion:
+        """Sign SAML assertion with XML digital signature.
         
-        # Add Reference node with SHA-256 digest
-        ref = xmlsec.template.add_reference(
-            signature_node,
-            xmlsec.constants.TransformSha256,
-            uri="",  # Empty URI means sign the parent element
+        Applies W3C XML Signature with configured signature algorithm to the provided
+        SAML assertion. The signature is embedded as a child element of the assertion
+        and includes the signing certificate in KeyInfo.
+        
+        Args:
+            saml_assertion: Unsigned SAML assertion to sign
+            
+        Returns:
+            New SAMLAssertion with signature embedded in xml_content and
+            signature field populated with base64 signature value
+            
+        Raises:
+            ValueError: If SAML assertion has invalid XML structure
+            InvalidInput: If certificate or key is invalid (from signxml)
+            
+        Example:
+            >>> signer = SAMLSigner(cert_bundle)
+            >>> unsigned_assertion = generator.generate(...)
+            >>> signed_assertion = signer.sign_assertion(unsigned_assertion)
+            >>> assert signed_assertion.signature != ""
+            >>> assert "<ds:Signature" in signed_assertion.xml_content
+        """
+        try:
+            logger.info(f"Signing SAML assertion: {saml_assertion.assertion_id}")
+            
+            # Parse XML content
+            assertion_element = etree.fromstring(saml_assertion.xml_content.encode('utf-8'))
+            
+            # Convert certificate and key to PEM format bytes
+            from cryptography.hazmat.primitives import serialization
+            
+            cert_pem = self.cert_bundle.certificate.public_bytes(
+                encoding=serialization.Encoding.PEM
+            )
+            
+            key_pem = self.cert_bundle.private_key.private_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PrivateFormat.PKCS8,
+                encryption_algorithm=serialization.NoEncryption()
+            )
+            
+            # Sign assertion
+            signed_element = self.signer.sign(
+                assertion_element,
+                key=key_pem,
+                cert=cert_pem
+            )
+            
+            # Extract signature value
+            ns = {'ds': DS_NS}
+            sig_value_elem = signed_element.find('.//ds:SignatureValue', ns)
+            
+            if sig_value_elem is None or sig_value_elem.text is None:
+                raise ValueError(
+                    "Failed to extract SignatureValue from signed assertion. "
+                    "This indicates a signing operation error."
+                )
+            
+            sig_value = sig_value_elem.text
+            
+            # Serialize signed XML
+            signed_xml = etree.tostring(signed_element, encoding='unicode')
+            
+            # Create new SAMLAssertion with signature
+            from dataclasses import replace
+            signed_assertion = replace(
+                saml_assertion,
+                xml_content=signed_xml,
+                signature=sig_value,
+                certificate_subject=self.cert_bundle.info.subject
+            )
+            
+            logger.info(
+                f"SAML assertion signed successfully: {saml_assertion.assertion_id}"
+            )
+            
+            return signed_assertion
+            
+        except etree.XMLSyntaxError as e:
+            logger.error(f"Invalid XML structure in SAML assertion: {e}")
+            raise ValueError(
+                f"Invalid XML structure in SAML assertion: {e}. "
+                f"Ensure xml_content is well-formed XML."
+            )
+        
+        except InvalidInput as e:
+            logger.error(f"Invalid certificate or private key: {e}")
+            raise InvalidInput(
+                f"Invalid certificate or private key: {e}. "
+                f"Verify certificate bundle is correct."
+            )
+        
+        except Exception as e:
+            logger.error(f"Unexpected error during SAML signing: {e}")
+            raise ValueError(
+                f"Unexpected error during SAML signing: {e}. "
+                f"Check certificate, key, and XML content."
+            )
+    
+    def sign_batch(self, assertions: List[SAMLAssertion]) -> List[SAMLAssertion]:
+        """Sign multiple SAML assertions with optimized batch processing.
+        
+        Signs multiple assertions efficiently by reusing the same XMLSigner
+        instance and certificate/key configuration. Continues processing even
+        if individual assertions fail, returning all successfully signed assertions.
+        
+        Args:
+            assertions: List of SAML assertions to sign
+            
+        Returns:
+            List of signed SAMLAssertion objects (may be partial if some failed)
+            
+        Example:
+            >>> assertions = [generator.generate(...) for _ in range(10)]
+            >>> signer = SAMLSigner(cert_bundle)
+            >>> signed_assertions = signer.sign_batch(assertions)
+            >>> assert len(signed_assertions) == 10
+        """
+        import time
+        
+        logger.info(f"Starting batch signing: {len(assertions)} assertions")
+        start_time = time.time()
+        
+        signed_assertions: List[SAMLAssertion] = []
+        failed_count = 0
+        
+        for idx, assertion in enumerate(assertions):
+            try:
+                signed = self.sign_assertion(assertion)
+                signed_assertions.append(signed)
+            except Exception as e:
+                logger.error(
+                    f"Failed to sign assertion {idx + 1}/{len(assertions)} "
+                    f"(ID: {assertion.assertion_id}): {e}"
+                )
+                failed_count += 1
+        
+        duration_ms = (time.time() - start_time) * 1000
+        
+        logger.info(
+            f"Batch signing complete: {len(signed_assertions)}/{len(assertions)} successful, "
+            f"{failed_count} failed, duration={duration_ms:.1f}ms"
         )
         
-        # Add Enveloped signature transform (signature is within signed element)
-        xmlsec.template.add_transform(ref, xmlsec.constants.TransformEnveloped)
-        
-        # Add Exclusive C14N transform to Reference
-        xmlsec.template.add_transform(ref, xmlsec.constants.TransformExclC14N)
-        
-        # Add KeyInfo node
-        key_info = xmlsec.template.ensure_key_info(signature_node)
-        
-        # Add X509Data to KeyInfo if certificate provided
-        if certificate:
-            logger.debug("Adding X509 certificate to KeyInfo")
-            x509_data = xmlsec.template.add_x509_data(key_info)
-            xmlsec.template.x509_data_add_certificate(x509_data)
-        
-        # Load private key
-        logger.info(f"Loading private key from: {private_key_path.name}")
-        key = xmlsec.Key.from_file(
-            str(private_key_path),
-            xmlsec.constants.KeyDataFormatPem,
-            password=key_password.decode() if key_password else None,
-        )
-        
-        # Load certificate if provided
-        if certificate:
-            # Convert certificate to PEM bytes and load into key
-            cert_pem = certificate.public_bytes(encoding=serialization.Encoding.PEM)
-            key.load_cert_from_memory(cert_pem, xmlsec.constants.KeyDataFormatPem)
-        
-        # Create signature context and sign
-        ctx = xmlsec.SignatureContext()
-        ctx.key = key
-        
-        logger.info("Signing XML element with RSA-SHA256")
-        ctx.sign(signature_node)
-        
-        logger.debug("XML element signed successfully")
-        return xml_element
-        
-    except xmlsec.Error as e:
-        logger.error(f"Failed to sign XML: {e}")
-        raise
-    except Exception as e:
-        logger.error(f"Unexpected error during XML signing: {e}")
-        raise ValueError(f"Failed to sign XML element: {e}")
-
-
-def sign_xml_with_cert_path(
-    xml_element: etree._Element,
-    private_key_path: Path,
-    certificate_path: Path,
-    key_password: Optional[bytes] = None,
-) -> etree._Element:
-    """Sign XML element using certificate from file path.
-
-    Convenience wrapper around sign_xml that loads certificate from file.
-
-    Args:
-        xml_element: XML element to sign
-        private_key_path: Path to private key file (PEM format)
-        certificate_path: Path to certificate file (PEM format)
-        key_password: Optional password for encrypted private key
-
-    Returns:
-        Signed XML element
-
-    Raises:
-        FileNotFoundError: If certificate or key file not found
-        xmlsec.Error: If signing operation fails
-    """
-    if not certificate_path.exists():
-        raise FileNotFoundError(f"Certificate not found: {certificate_path}")
-    
-    # Load certificate using cryptography
-    from ihe_test_util.saml.certificate_manager import CertificateManager
-    
-    cert = CertificateManager.load_pem_certificate(certificate_path)
-    
-    return sign_xml(xml_element, private_key_path, cert, key_password)
-
-
-# Import for certificate conversion
-from cryptography.hazmat.primitives import serialization
+        return signed_assertions

@@ -37,9 +37,8 @@ from ihe_test_util.saml.programmatic_generator import (
     generate_assertion_id,
     generate_saml_timestamps,
 )
-
-# Note: signer.py and verifier.py contain python-xmlsec implementations
-# For production use, recommend SignXML library instead (see examples/signxml_saml_example.py)
+from ihe_test_util.saml.signer import SAMLSigner
+from ihe_test_util.saml.verifier import SAMLVerifier
 
 __all__ = [
     # Spike generator (legacy)
@@ -65,4 +64,7 @@ __all__ = [
     "SAMLProgrammaticGenerator",
     "generate_assertion_id",
     "generate_saml_timestamps",
+    # XML Signing (Story 4.4)
+    "SAMLSigner",
+    "SAMLVerifier",
 ]

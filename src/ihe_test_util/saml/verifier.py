@@ -1,16 +1,20 @@
-"""XML signature verification module using python-xmlsec.
+"""XML signature verification module using signxml library.
 
-This module provides functionality for verifying XML signatures on SAML
-assertions and other signed XML documents.
+This module provides functionality for verifying XML signatures on SAML assertions
+and validating assertion timestamp freshness. Uses signxml library for pure Python
+implementation with zero compilation requirements.
 """
 
 import logging
-from pathlib import Path
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Tuple
 
-import xmlsec
-from cryptography import x509
 from lxml import etree
+from signxml import XMLVerifier
+from signxml.exceptions import InvalidDigest, InvalidSignature
+
+from ..models.saml import CertificateBundle, SAMLAssertion
+from ..utils.exceptions import CertificateLoadError
 
 logger = logging.getLogger(__name__)
 
@@ -18,192 +22,282 @@ logger = logging.getLogger(__name__)
 DS_NS = "http://www.w3.org/2000/09/xmldsig#"
 
 
-def verify_xml_signature(
-    signed_xml: etree._Element,
-    certificate_path: Optional[Path] = None,
-    certificate: Optional[x509.Certificate] = None,
-) -> Tuple[bool, str]:
-    """Verify XML signature using certificate.
-
-    This function verifies an XML Signature embedded in an XML element.
-    The certificate can be provided either as a file path or as a
-    cryptography Certificate object. If neither is provided, the function
-    will attempt to extract the certificate from the KeyInfo element.
-
-    Args:
-        signed_xml: Signed XML element containing Signature
-        certificate_path: Optional path to certificate file for verification
-        certificate: Optional X.509 certificate object for verification
-
-    Returns:
-        Tuple of (success: bool, message: str) indicating verification result
-
-    Raises:
-        ValueError: If signature element not found or invalid
-        xmlsec.Error: If verification process fails
-    """
-    try:
-        # Find signature node
-        signature_node = signed_xml.find(f".//{{{DS_NS}}}Signature")
-        
-        if signature_node is None:
-            return False, "No Signature element found in XML"
-        
-        logger.info("Found Signature element, proceeding with verification")
-        
-        # Create signature context
-        ctx = xmlsec.SignatureContext()
-        
-        # Load certificate if provided
-        if certificate_path:
-            if not certificate_path.exists():
-                return False, f"Certificate file not found: {certificate_path}"
-            
-            logger.info(f"Loading certificate from: {certificate_path.name}")
-            key = xmlsec.Key.from_file(
-                str(certificate_path),
-                xmlsec.constants.KeyDataFormatPem,
-            )
-            ctx.key = key
-            
-        elif certificate:
-            # Convert certificate to PEM and load
-            from cryptography.hazmat.primitives import serialization
-            
-            cert_pem = certificate.public_bytes(encoding=serialization.Encoding.PEM)
-            
-            logger.info(f"Loading certificate: {certificate.subject.rfc4514_string()}")
-            key = xmlsec.Key.from_memory(
-                cert_pem,
-                xmlsec.constants.KeyDataFormatPem,
-            )
-            ctx.key = key
-        
-        # If no certificate provided, try to extract from KeyInfo
-        else:
-            logger.info("No certificate provided, will use KeyInfo from signature")
-            # xmlsec will automatically use certificate from KeyInfo if present
-        
-        # Verify signature
-        logger.info("Verifying XML signature")
-        ctx.verify(signature_node)
-        
-        logger.info("Signature verification successful")
-        return True, "Signature is valid"
-        
-    except xmlsec.VerificationError as e:
-        logger.warning(f"Signature verification failed: {e}")
-        return False, f"Signature verification failed: {e}"
-        
-    except xmlsec.Error as e:
-        logger.error(f"xmlsec error during verification: {e}")
-        return False, f"Verification error: {e}"
-        
-    except Exception as e:
-        logger.error(f"Unexpected error during verification: {e}")
-        return False, f"Unexpected verification error: {e}"
-
-
-def extract_certificate_from_signature(
-    signed_xml: etree._Element,
-) -> Optional[x509.Certificate]:
-    """Extract X.509 certificate from signature KeyInfo element.
-
-    Args:
-        signed_xml: Signed XML element containing Signature
-
-    Returns:
-        X.509 Certificate if found, None otherwise
-
-    Raises:
-        ValueError: If signature structure is invalid
-    """
-    try:
-        # Find X509Certificate element within KeyInfo
-        cert_elem = signed_xml.find(
-            f".//{{{DS_NS}}}Signature/{{{DS_NS}}}KeyInfo"
-            f"/{{{DS_NS}}}X509Data/{{{DS_NS}}}X509Certificate"
-        )
-        
-        if cert_elem is None or not cert_elem.text:
-            logger.warning("No X509Certificate found in KeyInfo")
-            return None
-        
-        # Certificate text is base64 encoded DER
-        import base64
-        cert_der = base64.b64decode(cert_elem.text)
-        
-        # Load certificate
-        from cryptography.hazmat.backends import default_backend
-        cert = x509.load_der_x509_certificate(cert_der, default_backend())
-        
-        logger.info(f"Extracted certificate: {cert.subject.rfc4514_string()}")
-        logger.info(f"Certificate expires: {cert.not_valid_after}")
-        
-        return cert
-        
-    except Exception as e:
-        logger.error(f"Failed to extract certificate from signature: {e}")
-        return None
-
-
-def verify_with_tamper_detection(
-    signed_xml: etree._Element,
-    certificate_path: Optional[Path] = None,
-) -> Tuple[bool, str, dict]:
-    """Verify signature and provide detailed tamper detection information.
-
-    Args:
-        signed_xml: Signed XML element
-        certificate_path: Optional certificate path for verification
-
-    Returns:
-        Tuple of (success: bool, message: str, details: dict)
-        Details dict contains signature information and validation results
-    """
-    details = {
-        "signature_found": False,
-        "certificate_embedded": False,
-        "signature_valid": False,
-        "signature_method": None,
-        "canonicalization_method": None,
-    }
+class SAMLVerifier:
+    """Verify XML signatures on SAML assertions.
     
-    try:
-        # Find signature node
-        signature_node = signed_xml.find(f".//{{{DS_NS}}}Signature")
+    This class provides methods to verify XML Signature on SAML 2.0 assertions
+    and validate assertion timestamp freshness. Uses signxml library for
+    standards-compliant signature verification.
+    
+    Attributes:
+        cert_bundle: Optional certificate bundle for verification
         
-        if signature_node is None:
-            return False, "No signature found", details
+    Example:
+        >>> from pathlib import Path
+        >>> from ihe_test_util.saml.certificate_manager import load_certificate
+        >>> 
+        >>> # Load certificate
+        >>> cert_bundle = load_certificate(Path("certs/saml.p12"), password=b"secret")
+        >>> 
+        >>> # Verify signed assertion
+        >>> verifier = SAMLVerifier(cert_bundle)
+        >>> is_valid = verifier.verify_assertion(signed_assertion)
+        >>> assert is_valid is True
+    """
+    
+    def __init__(self, cert_bundle: Optional[CertificateBundle] = None) -> None:
+        """Initialize SAML verifier.
         
-        details["signature_found"] = True
+        Args:
+            cert_bundle: Optional certificate bundle for verification
+                        (certificate extracted from signature if not provided)
         
-        # Extract signature method
-        sig_method = signature_node.find(
-            f".//{{{DS_NS}}}SignedInfo/{{{DS_NS}}}SignatureMethod"
+        Example:
+            >>> verifier = SAMLVerifier()  # Use certificate from signature
+            >>> # or
+            >>> verifier = SAMLVerifier(cert_bundle)  # Use specific certificate
+        """
+        self.cert_bundle = cert_bundle
+        
+        logger.debug(
+            f"SAMLVerifier initialized "
+            f"(cert_bundle={'provided' if cert_bundle else 'will extract from signature'})"
         )
-        if sig_method is not None:
-            details["signature_method"] = sig_method.get("Algorithm")
+    
+    def verify_assertion(
+        self,
+        saml_assertion: SAMLAssertion,
+        cert: Optional[str] = None
+    ) -> bool:
+        """Verify XML signature on SAML assertion.
         
-        # Extract canonicalization method
-        canon_method = signature_node.find(
-            f".//{{{DS_NS}}}SignedInfo/{{{DS_NS}}}CanonicalizationMethod"
+        Verifies the XML Signature embedded in the SAML assertion using either
+        the provided certificate, the instance certificate bundle, or the
+        certificate extracted from the signature's KeyInfo element.
+        
+        Args:
+            saml_assertion: Signed SAML assertion to verify
+            cert: Optional PEM-encoded certificate string for verification
+            
+        Returns:
+            True if signature is valid, False otherwise
+            
+        Raises:
+            InvalidSignature: Signature verification failed (tampered or wrong cert)
+            InvalidDigest: Content was modified after signing (tampering detected)
+            ValueError: If XML structure is invalid
+            
+        Example:
+            >>> verifier = SAMLVerifier(cert_bundle)
+            >>> is_valid = verifier.verify_assertion(signed_assertion)
+            >>> if is_valid:
+            ...     print("✅ Signature verified")
+        """
+        try:
+            logger.info(f"Verifying SAML assertion: {saml_assertion.assertion_id}")
+            
+            # Parse signed XML
+            signed_element = etree.fromstring(saml_assertion.xml_content.encode('utf-8'))
+            
+            # Check that signature element exists
+            ns = {'ds': DS_NS}
+            sig_element = signed_element.find('.//ds:Signature', ns)
+            
+            if sig_element is None:
+                logger.warning(
+                    f"No Signature element found in assertion {saml_assertion.assertion_id}"
+                )
+                return False
+            
+            # Create verifier
+            verifier = XMLVerifier()
+            
+            # Prepare certificate for verification
+            cert_pem: Optional[bytes] = None
+            
+            if cert:
+                # Use provided certificate string
+                cert_pem = cert.encode('utf-8')
+                logger.debug("Using provided certificate for verification")
+            elif self.cert_bundle:
+                # Use certificate from bundle
+                from cryptography.hazmat.primitives import serialization
+                
+                cert_pem = self.cert_bundle.certificate.public_bytes(
+                    encoding=serialization.Encoding.PEM
+                )
+                logger.debug("Using certificate from bundle for verification")
+            else:
+                # Certificate will be extracted from KeyInfo
+                logger.debug("Will extract certificate from signature KeyInfo")
+            
+            # Verify signature
+            if cert_pem:
+                verified_data = verifier.verify(signed_element, x509_cert=cert_pem)
+            else:
+                verified_data = verifier.verify(signed_element)
+            
+            logger.info(
+                f"Signature verification successful: {saml_assertion.assertion_id}"
+            )
+            return True
+            
+        except InvalidSignature as e:
+            logger.warning(
+                f"SAML signature verification failed for {saml_assertion.assertion_id}: {e}. "
+                f"Assertion may be tampered or signed with different certificate."
+            )
+            raise InvalidSignature(
+                f"SAML signature verification failed: {e}. "
+                f"Assertion may be tampered or signed with different certificate."
+            )
+        
+        except InvalidDigest as e:
+            logger.warning(
+                f"SAML digest verification failed for {saml_assertion.assertion_id}: {e}. "
+                f"Assertion content has been modified after signing."
+            )
+            raise InvalidDigest(
+                f"SAML digest verification failed: {e}. "
+                f"Assertion content has been modified after signing."
+            )
+        
+        except etree.XMLSyntaxError as e:
+            logger.error(
+                f"Invalid XML in signed SAML assertion {saml_assertion.assertion_id}: {e}"
+            )
+            raise ValueError(
+                f"Invalid XML in signed SAML assertion: {e}. "
+                f"XML may be corrupted."
+            )
+        
+        except Exception as e:
+            logger.error(
+                f"Unexpected error during signature verification for "
+                f"{saml_assertion.assertion_id}: {e}"
+            )
+            raise ValueError(
+                f"Unexpected error during signature verification: {e}. "
+                f"Check certificate and XML structure."
+            )
+    
+    def validate_timestamp_freshness(
+        self,
+        saml_assertion: SAMLAssertion,
+        max_age_minutes: int = 5
+    ) -> bool:
+        """Validate SAML assertion timestamp freshness.
+        
+        Checks that the assertion is not expired, not yet valid, and not older
+        than the specified maximum age. This prevents replay attacks and ensures
+        assertions are used within their intended validity period.
+        
+        Args:
+            saml_assertion: SAML assertion to validate
+            max_age_minutes: Maximum assertion age in minutes (default: 5)
+            
+        Returns:
+            True if assertion is fresh and within validity period, False otherwise
+            
+        Example:
+            >>> verifier = SAMLVerifier()
+            >>> is_fresh = verifier.validate_timestamp_freshness(assertion, max_age_minutes=5)
+            >>> if is_fresh:
+            ...     print("✅ Assertion is fresh")
+        """
+        now = datetime.now(timezone.utc)
+        
+        logger.debug(
+            f"Validating timestamp freshness for {saml_assertion.assertion_id}: "
+            f"now={now.isoformat()}, "
+            f"issue_instant={saml_assertion.issue_instant.isoformat()}, "
+            f"not_before={saml_assertion.not_before.isoformat()}, "
+            f"not_on_or_after={saml_assertion.not_on_or_after.isoformat()}"
         )
-        if canon_method is not None:
-            details["canonicalization_method"] = canon_method.get("Algorithm")
         
-        # Check for embedded certificate
-        cert = extract_certificate_from_signature(signed_xml)
-        if cert:
-            details["certificate_embedded"] = True
-            details["certificate_subject"] = cert.subject.rfc4514_string()
-            details["certificate_expiry"] = str(cert.not_valid_after)
+        # Check if assertion is not yet valid
+        if saml_assertion.not_before > now:
+            logger.warning(
+                f"SAML assertion {saml_assertion.assertion_id} not yet valid. "
+                f"NotBefore: {saml_assertion.not_before.isoformat()}, "
+                f"Current: {now.isoformat()}"
+            )
+            return False
         
-        # Verify signature
-        success, message = verify_xml_signature(signed_xml, certificate_path)
-        details["signature_valid"] = success
+        # Check if assertion is expired
+        if saml_assertion.not_on_or_after < now:
+            logger.warning(
+                f"SAML assertion {saml_assertion.assertion_id} expired. "
+                f"NotOnOrAfter: {saml_assertion.not_on_or_after.isoformat()}, "
+                f"Current: {now.isoformat()}"
+            )
+            return False
         
-        return success, message, details
+        # Check assertion age (from issue_instant)
+        age = now - saml_assertion.issue_instant
+        max_age = timedelta(minutes=max_age_minutes)
         
-    except Exception as e:
-        return False, f"Verification error: {e}", details
+        if age > max_age:
+            logger.warning(
+                f"SAML assertion {saml_assertion.assertion_id} too old. "
+                f"Age: {age.total_seconds():.1f}s, "
+                f"Max age: {max_age.total_seconds():.1f}s"
+            )
+            return False
+        
+        logger.info(
+            f"Timestamp validation successful for {saml_assertion.assertion_id}: "
+            f"age={age.total_seconds():.1f}s"
+        )
+        return True
+    
+    def verify_and_validate(
+        self,
+        saml_assertion: SAMLAssertion,
+        max_age_minutes: int = 5,
+        cert: Optional[str] = None
+    ) -> Tuple[bool, str]:
+        """Verify signature and validate timestamp freshness in one call.
+        
+        Convenience method that performs both signature verification and
+        timestamp freshness validation, returning a combined result.
+        
+        Args:
+            saml_assertion: Signed SAML assertion to verify
+            max_age_minutes: Maximum assertion age in minutes (default: 5)
+            cert: Optional PEM-encoded certificate string for verification
+            
+        Returns:
+            Tuple of (is_valid: bool, message: str) with validation result
+            
+        Example:
+            >>> verifier = SAMLVerifier(cert_bundle)
+            >>> is_valid, message = verifier.verify_and_validate(signed_assertion)
+            >>> if is_valid:
+            ...     print(f"✅ {message}")
+            ... else:
+            ...     print(f"❌ {message}")
+        """
+        try:
+            # Verify signature
+            is_signature_valid = self.verify_assertion(saml_assertion, cert)
+            
+            if not is_signature_valid:
+                return False, "Signature verification failed"
+            
+            # Validate timestamp freshness
+            is_fresh = self.validate_timestamp_freshness(saml_assertion, max_age_minutes)
+            
+            if not is_fresh:
+                return False, "Assertion expired or not yet valid"
+            
+            return True, "Signature and timestamp validation successful"
+            
+        except InvalidSignature as e:
+            return False, f"Signature verification failed: {e}"
+        
+        except InvalidDigest as e:
+            return False, f"Digest verification failed (tampering detected): {e}"
+        
+        except Exception as e:
+            return False, f"Validation error: {e}"
