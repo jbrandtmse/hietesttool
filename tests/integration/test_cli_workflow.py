@@ -652,3 +652,380 @@ PAT-005,1.2.3.4.5,Charlie,Brown,1992-08-15,M,MRN005"""
         assert "Examples:" in result.output
         assert "--output" in result.output
         assert "--format" in result.output
+
+
+class TestSAMLCLIWorkflows:
+    """Integration tests for SAML CLI workflows."""
+
+    def test_saml_generate_and_verify_workflow(self, tmp_path):
+        """Test complete workflow: generate SAML → save → verify."""
+        # Arrange
+        runner = CliRunner()
+        output_file = tmp_path / "assertion.xml"
+        cert_file = Path("tests/fixtures/test_cert.pem")
+        
+        if not cert_file.exists():
+            pytest.skip("Test certificate not available")
+
+        # Act - Step 1: Generate signed SAML assertion
+        generate_result = runner.invoke(
+            cli,
+            [
+                "saml", "generate",
+                "--programmatic",
+                "--subject", "user@example.com",
+                "--issuer", "https://idp.example.com",
+                "--audience", "https://sp.example.com",
+                "--sign",
+                "--cert", str(cert_file),
+                "--key", "tests/fixtures/test_key.pem",
+                "--output", str(output_file),
+            ],
+        )
+
+        # Assert - Generation succeeds
+        assert generate_result.exit_code == 0
+        assert "SAML assertion signed" in generate_result.output
+        assert "SAML assertion saved to" in generate_result.output
+        assert output_file.exists()
+
+        # Act - Step 2: Verify generated SAML
+        verify_result = runner.invoke(cli, ["saml", "verify", str(output_file)])
+
+        # Assert - Verification succeeds
+        assert verify_result.exit_code == 0
+        assert "SAML 2.0 structure valid" in verify_result.output
+
+    def test_saml_generate_template_and_programmatic_comparison(self, tmp_path):
+        """Test generating SAML with both template and programmatic methods."""
+        # Arrange
+        runner = CliRunner()
+        template_file = Path("templates/saml-template.xml")
+        template_output = tmp_path / "template_assertion.xml"
+        programmatic_output = tmp_path / "programmatic_assertion.xml"
+        
+        if not template_file.exists():
+            pytest.skip("SAML template not available")
+
+        # Act - Template-based generation
+        cert_file = Path("tests/fixtures/test_cert.pem")
+        template_result = runner.invoke(
+            cli,
+            [
+                "saml", "generate",
+                "--template", str(template_file),
+                "--subject", "user@example.com",
+                "--issuer", "https://idp.example.com",
+                "--audience", "https://sp.example.com",
+                "--output", str(template_output),
+            ],
+        )
+
+        # Act - Programmatic generation
+        programmatic_result = runner.invoke(
+            cli,
+            [
+                "saml", "generate",
+                "--programmatic",
+                "--subject", "user@example.com",
+                "--issuer", "https://idp.example.com",
+                "--audience", "https://sp.example.com",
+                "--output", str(programmatic_output),
+            ],
+        )
+
+        # Assert - Both methods succeed
+        assert template_result.exit_code == 0
+        assert programmatic_result.exit_code == 0
+        
+        # Assert - Both output files created
+        assert template_output.exists()
+        assert programmatic_output.exists()
+        
+        # Assert - Both contain valid SAML XML
+        from lxml import etree
+        saml_ns = "urn:oasis:names:tc:SAML:2.0:assertion"
+        
+        template_xml = etree.parse(str(template_output))
+        assert template_xml.getroot().tag == f"{{{saml_ns}}}Assertion"
+        
+        programmatic_xml = etree.parse(str(programmatic_output))
+        assert programmatic_xml.getroot().tag == f"{{{saml_ns}}}Assertion"
+
+    def test_saml_demo_pix_add_workflow(self, tmp_path):
+        """Test generating demo PIX Add SOAP envelope."""
+        # Arrange
+        runner = CliRunner()
+        cert_file = Path("tests/fixtures/test_cert.pem")
+        output_file = tmp_path / "demo_pix_add.xml"
+        
+        if not cert_file.exists():
+            pytest.skip("Test certificate not available")
+
+        # Act
+        result = runner.invoke(
+            cli,
+            [
+                "saml", "demo",
+                "--scenario", "pix-add",
+                "--cert", str(cert_file),
+                "--key", "tests/fixtures/test_key.pem",
+                "--output", str(output_file),
+            ],
+        )
+
+        # Assert
+        assert result.exit_code == 0
+        assert "Demo SOAP envelope saved to" in result.output
+        assert "Usage Notes" in result.output
+        assert output_file.exists()
+        
+        # Verify SOAP envelope structure
+        from lxml import etree
+        soap_xml = etree.parse(str(output_file))
+        soap_ns = "http://www.w3.org/2003/05/soap-envelope"
+        assert soap_xml.getroot().tag == f"{{{soap_ns}}}Envelope"
+
+    def test_saml_demo_iti41_workflow(self, tmp_path):
+        """Test generating demo ITI-41 SOAP envelope."""
+        # Arrange
+        runner = CliRunner()
+        cert_file = Path("tests/fixtures/test_cert.pem")
+        output_file = tmp_path / "demo_iti41.xml"
+        
+        if not cert_file.exists():
+            pytest.skip("Test certificate not available")
+
+        # Act
+        result = runner.invoke(
+            cli,
+            [
+                "saml", "demo",
+                "--scenario", "iti41",
+                "--cert", str(cert_file),
+                "--key", "tests/fixtures/test_key.pem",
+                "--output", str(output_file),
+            ],
+        )
+
+        # Assert
+        assert result.exit_code == 0
+        assert output_file.exists()
+        
+        # Verify SOAP envelope contains SAML assertion
+        content = output_file.read_text()
+        assert "saml:Assertion" in content or "Assertion" in content
+        assert "wsse:Security" in content or "Security" in content
+
+    def test_saml_verify_unsigned_assertion(self, tmp_path):
+        """Test verifying unsigned SAML assertion."""
+        # Arrange
+        runner = CliRunner()
+        assertion_file = tmp_path / "unsigned.xml"
+        
+        # Generate unsigned SAML
+        generate_result = runner.invoke(
+            cli,
+            [
+                "saml", "generate",
+                "--programmatic",
+                "--subject", "user@example.com",
+                "--issuer", "https://idp.example.com",
+                "--audience", "https://sp.example.com",
+                "--output", str(assertion_file),
+            ],
+        )
+        
+        assert generate_result.exit_code == 0
+
+        # Act - Verify unsigned assertion
+        verify_result = runner.invoke(cli, ["saml", "verify", str(assertion_file)])
+
+        # Assert
+        assert verify_result.exit_code == 0
+        assert "SAML 2.0 structure valid" in verify_result.output
+        assert "Not signed" in verify_result.output
+
+    def test_saml_verify_with_verbose_flag(self, tmp_path):
+        """Test SAML verify with verbose flag shows detailed metadata."""
+        # Arrange
+        runner = CliRunner()
+        assertion_file = tmp_path / "assertion.xml"
+        
+        # Generate SAML
+        generate_result = runner.invoke(
+            cli,
+            [
+                "saml", "generate",
+                "--programmatic",
+                "--subject", "user@example.com",
+                "--issuer", "https://idp.example.com",
+                "--audience", "https://sp.example.com",
+                "--output", str(assertion_file),
+            ],
+        )
+        
+        assert generate_result.exit_code == 0
+
+        # Act - Verify with verbose
+        verify_result = runner.invoke(
+            cli, ["saml", "verify", str(assertion_file), "--verbose"]
+        )
+
+        # Assert - Verbose output includes metadata
+        assert verify_result.exit_code == 0
+        assert "Assertion Metadata" in verify_result.output
+        assert "ID:" in verify_result.output
+        assert "Issuer:" in verify_result.output
+        assert "Subject:" in verify_result.output
+
+    def test_saml_generate_with_different_validity_periods(self, tmp_path):
+        """Test generating SAML assertions with different validity periods."""
+        # Arrange
+        runner = CliRunner()
+        
+        # Test different validity periods: 5, 10, 60 minutes
+        validity_periods = [5, 10, 60]
+        
+        for minutes in validity_periods:
+            output_file = tmp_path / f"assertion_{minutes}min.xml"
+            
+            # Act
+            result = runner.invoke(
+                cli,
+                [
+                    "saml", "generate",
+                    "--programmatic",
+                    "--subject", "user@example.com",
+                    "--issuer", "https://idp.example.com",
+                    "--audience", "https://sp.example.com",
+                    "--validity", str(minutes),
+                    "--output", str(output_file),
+                ],
+            )
+            
+            # Assert
+            assert result.exit_code == 0
+            assert output_file.exists()
+            assert f"{minutes}.0 minutes" in result.output or f"{minutes}" in result.output
+
+    def test_saml_generate_with_pkcs12_certificate(self, tmp_path):
+        """Test SAML generation with PKCS12 certificate."""
+        # Arrange
+        runner = CliRunner()
+        cert_file = Path("tests/fixtures/test_cert.p12")
+        output_file = tmp_path / "assertion.xml"
+        
+        if not cert_file.exists():
+            pytest.skip("PKCS12 certificate not available")
+
+        # Act
+        result = runner.invoke(
+            cli,
+            [
+                "saml", "generate",
+                "--programmatic",
+                "--subject", "user@example.com",
+                "--issuer", "https://idp.example.com",
+                "--audience", "https://sp.example.com",
+                "--sign",
+                "--cert", str(cert_file),
+                "--cert-password", "testpass",
+                "--output", str(output_file),
+            ],
+        )
+
+        # Assert
+        assert result.exit_code == 0
+        assert output_file.exists()
+
+    def test_saml_error_messages_are_actionable(self, tmp_path):
+        """Test SAML commands provide actionable error messages."""
+        # Arrange
+        runner = CliRunner()
+        
+        # Test 1: Missing required parameters
+        result1 = runner.invoke(cli, ["saml", "generate", "--programmatic"])
+        assert result1.exit_code == 2
+        assert "Programmatic generation requires" in result1.output
+        
+        # Test 2: Signing without certificate
+        result2 = runner.invoke(
+            cli,
+            [
+                "saml", "generate",
+                "--programmatic",
+                "--subject", "user@example.com",
+                "--issuer", "https://idp.example.com",
+                "--audience", "https://sp.example.com",
+                "--sign",
+            ],
+        )
+        assert result2.exit_code == 2
+        assert "Signing requires --cert parameter" in result2.output
+        
+        # Test 3: Non-existent file for verify
+        nonexistent = tmp_path / "nonexistent.xml"
+        result3 = runner.invoke(cli, ["saml", "verify", str(nonexistent)])
+        assert result3.exit_code == 2
+
+    def test_saml_help_text_completeness(self):
+        """Test SAML command help text is complete and informative."""
+        # Arrange
+        runner = CliRunner()
+        
+        # Test main SAML help
+        saml_help = runner.invoke(cli, ["saml", "--help"])
+        assert saml_help.exit_code == 0
+        assert "generate" in saml_help.output
+        assert "verify" in saml_help.output
+        assert "demo" in saml_help.output
+        
+        # Test generate help
+        generate_help = runner.invoke(cli, ["saml", "generate", "--help"])
+        assert generate_help.exit_code == 0
+        assert "Examples:" in generate_help.output
+        assert "--template" in generate_help.output
+        assert "--programmatic" in generate_help.output
+        
+        # Test verify help
+        verify_help = runner.invoke(cli, ["saml", "verify", "--help"])
+        assert verify_help.exit_code == 0
+        assert "Examples:" in verify_help.output
+        
+        # Test demo help
+        demo_help = runner.invoke(cli, ["saml", "demo", "--help"])
+        assert demo_help.exit_code == 0
+        assert "Examples:" in demo_help.output
+        assert "--scenario" in demo_help.output
+
+    def test_saml_output_formats(self, tmp_path):
+        """Test SAML generation with different output formats."""
+        # Arrange
+        runner = CliRunner()
+        
+        # Test both xml and pretty formats
+        for format_type in ["xml", "pretty"]:
+            output_file = tmp_path / f"assertion_{format_type}.xml"
+            
+            # Act
+            result = runner.invoke(
+                cli,
+                [
+                    "saml", "generate",
+                    "--programmatic",
+                    "--subject", "user@example.com",
+                    "--issuer", "https://idp.example.com",
+                    "--audience", "https://sp.example.com",
+                    "--format", format_type,
+                    "--output", str(output_file),
+                ],
+            )
+            
+            # Assert
+            assert result.exit_code == 0
+            assert output_file.exists()
+            
+            # Verify valid XML
+            from lxml import etree
+            etree.parse(str(output_file))

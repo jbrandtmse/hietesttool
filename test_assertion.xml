@@ -1,0 +1,58 @@
+<saml:Assertion xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion" ID="_0640b6c9327646edb6d4f378a3d045b4" IssueInstant="2025-11-14T02:35:00Z" Version="2.0">
+  <saml:Issuer>https://idp.example.com</saml:Issuer>
+  <saml:Subject>
+    <saml:NameID Format="urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified">test@example.com</saml:NameID>
+    <saml:SubjectConfirmation Method="urn:oasis:names:tc:SAML:2.0:cm:bearer">
+      <saml:SubjectConfirmationData NotOnOrAfter="2025-11-14T02:40:00Z"/>
+    </saml:SubjectConfirmation>
+  </saml:Subject>
+  <saml:Conditions NotBefore="2025-11-14T02:35:00Z" NotOnOrAfter="2025-11-14T02:40:00Z">
+    <saml:AudienceRestriction>
+      <saml:Audience>https://sp.example.com</saml:Audience>
+    </saml:AudienceRestriction>
+  </saml:Conditions>
+  <saml:AuthnStatement AuthnInstant="2025-11-14T02:35:00Z" SessionIndex="_0640b6c9327646edb6d4f378a3d045b4">
+    <saml:AuthnContext>
+      <saml:AuthnContextClassRef>urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport</saml:AuthnContextClassRef>
+    </saml:AuthnContext>
+  </saml:AuthnStatement>
+  <ds:Signature xmlns:ds="http://www.w3.org/2000/09/xmldsig#">
+    <ds:SignedInfo>
+      <ds:CanonicalizationMethod Algorithm="http://www.w3.org/2006/12/xml-c14n11"/>
+      <ds:SignatureMethod Algorithm="http://www.w3.org/2001/04/xmldsig-more#rsa-sha256"/>
+      <ds:Reference URI="#_0640b6c9327646edb6d4f378a3d045b4">
+        <ds:Transforms>
+          <ds:Transform Algorithm="http://www.w3.org/2000/09/xmldsig#enveloped-signature"/>
+          <ds:Transform Algorithm="http://www.w3.org/2006/12/xml-c14n11"/>
+        </ds:Transforms>
+        <ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"/>
+        <ds:DigestValue>Ocv46Hj/y6SdSrvXIkL0lYqisSNCORUNRYW8wMiB01Q=</ds:DigestValue>
+      </ds:Reference>
+    </ds:SignedInfo>
+    <ds:SignatureValue>IAJivb5aY6zX6LkrnvMCDtSUBEGEKS3fR5on6ngYs24HK5xIDEjx2ieJYXJwRek5P0fTsSSberFowOWXNk+UH6LC+bvffqtVixtV4XDzFfzSjJN/OfnheT/GrxBkm0J1JIQDTwj2gwXIaLYpZFC+VHkv4M6EUsqHv4lD5FF7vki+2/VVkfFMOM5WELfCnXn1Hl3NNueIVf3aWhC1SAA2wiysySdWTwRn6oVB23VWHXd7SgQ7RRbhhrWois1tJcfrwRw2vp/RjCOMiNlJxYuHntk/Q7sYeyS1hO3RKRDX6RKZh2lBJ573sEZLPaQDa7wZKF9PISJ1iJOFF34TDP7vbA==</ds:SignatureValue>
+    <ds:KeyInfo>
+      <ds:X509Data>
+        <ds:X509Certificate>MIIDdDCCAlygAwIBAgIUMsz3UJ+I4hjNI/hTSAgFDpQ1F5UwDQYJKoZIhvcNAQEL
+BQAwdDELMAkGA1UEBhMCVVMxEjAQBgNVBAgMCVRlc3RTdGF0ZTERMA8GA1UEBwwI
+VGVzdENpdHkxEDAOBgNVBAoMB1Rlc3RPcmcxETAPBgNVBAsMCFRlc3RVbml0MRkw
+FwYDVQQDDBBUZXN0IENlcnRpZmljYXRlMB4XDTI1MTEwNDAyMjA1MloXDTI2MTEw
+NDAyMjA1MlowdDELMAkGA1UEBhMCVVMxEjAQBgNVBAgMCVRlc3RTdGF0ZTERMA8G
+A1UEBwwIVGVzdENpdHkxEDAOBgNVBAoMB1Rlc3RPcmcxETAPBgNVBAsMCFRlc3RV
+bml0MRkwFwYDVQQDDBBUZXN0IENlcnRpZmljYXRlMIIBIjANBgkqhkiG9w0BAQEF
+AAOCAQ8AMIIBCgKCAQEAjm8LSaHcv+KVpYDiUmm1usLHME5IAFfn2kTSyeSwO7ui
+7EWIQx2miKGSPbjigZW0u1hUta9OPkgJiYRc02+derA18PHhB9IAjFcDKuLoN7Bl
+Ngp9j9zXh9V3ua3m25njHZMRjZCIqjUbfPjS5Tk/chUBvmWmJ/5ifWGDpPrbIWy4
+atrV0jGFU+LNgX33x3ptMGovM6yBZpOAgsQT+Gw3PaE2I+BlMv0CfxOs3lUjj3rg
+Xl8hFdAQ0VwiCjcJjSHDhxRumNL6sQBuK+3eNWzXesefJjgg0ciTPaOdxG4UIEzE
+wloidJZsheP+Tn0p5NUfm0k7prCK18DFOoG2fYH7bwIDAQABMA0GCSqGSIb3DQEB
+CwUAA4IBAQCHz+Hi7ZzqkLrq28zERJd9gDQaiX/CqW7wDJU5RMehdO53F4whxGLe
+fw3QlVRGSBXYhoCJqa1q47USWOjxEb0AkKE6ptcBCXqh6fWFyGslIeWeAC6Y0gMm
+plbD/Ea7qTmSotX9H3HuJhteT5toBiPENsRVV0xrkahlcuvsgqVtrXlVCfUxYsmn
+qjTIhlRbqDpULXBgcxbuYdYsTkNWK2F49NWyG6QzbZgSg9YpDgo/ixsdTtoPjYTL
+gYgND9DbdquCJBOfLm4X6QrlBvpbljLphNUObPjb/QhTFEKa1wIjXso9Yf3QQgY/
+uFHyU5jgfEPa7TcIOURQSOFP2FxJ88Fi
+</ds:X509Certificate>
+      </ds:X509Data>
+    </ds:KeyInfo>
+  </ds:Signature>
+</saml:Assertion>

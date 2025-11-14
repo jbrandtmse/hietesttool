@@ -11,6 +11,7 @@ import click
 from ihe_test_util import __version__
 from ihe_test_util.cli.csv_commands import csv
 from ihe_test_util.cli.mock_commands import mock_group
+from ihe_test_util.cli.saml_commands import saml_group
 from ihe_test_util.cli.template_commands import template_group
 from ihe_test_util.config import load_config
 from ihe_test_util.logging_audit import configure_logging
@@ -95,6 +96,7 @@ def cli(
 # Register command groups
 cli.add_command(csv)
 cli.add_command(mock_group)
+cli.add_command(saml_group)
 cli.add_command(template_group)
 
 

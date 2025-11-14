@@ -40,6 +40,7 @@ def generate_test_certificates():
         x509.NameAttribute(NameOID.COMMON_NAME, "Test Certificate"),
     ])
     
+    # Add required X.509 extensions for signxml validation
     cert = x509.CertificateBuilder().subject_name(
         subject
     ).issuer_name(
@@ -52,6 +53,12 @@ def generate_test_certificates():
         datetime.utcnow()
     ).not_valid_after(
         datetime.utcnow() + timedelta(days=365)
+    ).add_extension(
+        x509.SubjectKeyIdentifier.from_public_key(private_key.public_key()),
+        critical=False,
+    ).add_extension(
+        x509.AuthorityKeyIdentifier.from_issuer_public_key(private_key.public_key()),
+        critical=False,
     ).sign(private_key, hashes.SHA256(), default_backend())
     
     # Write PEM files
