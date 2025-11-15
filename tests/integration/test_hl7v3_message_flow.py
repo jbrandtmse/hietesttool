@@ -1,17 +1,18 @@
 """Integration tests for HL7v3 message construction and acknowledgment parsing."""
 
 import pytest
+from datetime import date
 from lxml import etree
-from src.ihe_test_util.ihe_transactions.pix_add import (
-    PatientDemographics,
-    build_pix_add_message,
-)
-from src.ihe_test_util.ihe_transactions.parsers import (
+
+from ihe_test_util.models.patient import PatientDemographics
+from ihe_test_util.ihe_transactions.pix_add import build_pix_add_message
+from ihe_test_util.ihe_transactions.parsers import (
     parse_acknowledgment,
     parse_pix_add_acknowledgment,
     AcknowledgmentResponse,
     AcknowledgmentDetail,
 )
+from ihe_test_util.utils.exceptions import ValidationError
 
 
 # HL7v3 and SOAP namespaces
@@ -46,16 +47,15 @@ def sample_patient():
     """Sample patient demographics for testing."""
     return PatientDemographics(
         patient_id="PAT987654",
-        patient_id_root="2.16.840.1.113883.3.72.5.9.1",
-        given_name="Jane",
-        family_name="Smith",
+        patient_id_oid="2.16.840.1.113883.3.72.5.9.1",
+        first_name="Jane",
+        last_name="Smith",
+        dob=date(1990, 5, 15),
         gender="F",
-        birth_date="19900515",
-        street_address="456 Oak Avenue",
+        address="456 Oak Avenue",
         city="Seattle",
         state="WA",
-        postal_code="98101",
-        country="US",
+        zip="98101",
     )
 
 
@@ -277,11 +277,11 @@ class TestPRPAIN201301UV02MessageConstruction:
         # Arrange
         minimal_patient = PatientDemographics(
             patient_id="MIN001",
-            patient_id_root="2.16.840.1.113883.3.72.5.9.1",
-            given_name="Test",
-            family_name="Minimal",
+            patient_id_oid="2.16.840.1.113883.3.72.5.9.1",
+            first_name="Test",
+            last_name="Minimal",
+            dob=date(2000, 1, 1),
             gender="U",
-            birth_date="20000101",
         )
         
         # Act
@@ -400,15 +400,15 @@ class TestHL7v3MessageValidation:
         # Arrange
         patient = PatientDemographics(
             patient_id="TEST001",
-            patient_id_root="2.16.840.1.113883.3.72.5.9.1",
-            given_name="Invalid",
-            family_name="Gender",
+            patient_id_oid="2.16.840.1.113883.3.72.5.9.1",
+            first_name="Invalid",
+            last_name="Gender",
+            dob=date(2000, 1, 1),
             gender="Z",  # Invalid
-            birth_date="20000101",
         )
         
         # Act & Assert
-        with pytest.raises(ValueError, match="Invalid gender 'Z'. Must be M, F, O, or U."):
+        with pytest.raises(ValidationError, match="Invalid gender 'Z'"):
             build_pix_add_message(patient)
     
     def test_message_with_all_valid_gender_codes(self):
@@ -419,11 +419,11 @@ class TestHL7v3MessageValidation:
         for gender in valid_genders:
             patient = PatientDemographics(
                 patient_id=f"TEST-{gender}",
-                patient_id_root="2.16.840.1.113883.3.72.5.9.1",
-                given_name="Test",
-                family_name="Patient",
+                patient_id_oid="2.16.840.1.113883.3.72.5.9.1",
+                first_name="Test",
+                last_name="Patient",
+                dob=date(2000, 1, 1),
                 gender=gender,
-                birth_date="20000101",
             )
             
             # Act
