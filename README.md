@@ -1,5 +1,11 @@
 # IHE Test Utility
 
+> [!WARNING]
+> **🚧 WORK IN PROGRESS 🚧**
+> 
+> This project is currently under active development. APIs and functionality may change without notice.
+> Use in production environments is not recommended at this time.
+
 A Python-based test utility for IHE (Integrating the Healthcare Enterprise) integration testing, supporting PIX Add (ITI-44) and ITI-41 (Provide and Register Document Set-b) transactions.
 
 ## Overview
