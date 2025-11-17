@@ -446,6 +446,7 @@ class PIXAddSOAPClient:
                 status_code=ack.status,
                 response_timestamp=datetime.now(timezone.utc),
                 response_xml=response_xml,
+                extracted_identifiers=ack.patient_identifiers,
                 error_messages=error_messages,
                 processing_time_ms=processing_time_ms
             )
