@@ -9,8 +9,7 @@ import json
 import logging
 import time
 import uuid
-from datetime import datetime, timezone
-from enum import Enum
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Optional
 
@@ -29,127 +28,18 @@ from ihe_test_util.models.responses import TransactionStatus
 from ihe_test_util.models.saml import SAMLAssertion
 from ihe_test_util.saml.generator import generate_saml_assertion
 from ihe_test_util.saml.signer import SAMLSigner
-from ihe_test_util.utils.exceptions import ValidationError
+from ihe_test_util.utils.exceptions import (
+    ValidationError,
+    ErrorCategory,
+    categorize_error,
+    create_error_info,
+)
+from ihe_test_util.ihe_transactions.error_summary import (
+    ErrorSummaryCollector,
+    generate_error_report,
+)
 
 logger = logging.getLogger(__name__)
-
-
-class ErrorCategory(Enum):
-    """Error categorization for workflow handling.
-    
-    Attributes:
-        CRITICAL: Halt workflow immediately (endpoint unreachable, certificate invalid)
-        NON_CRITICAL: Continue workflow (single patient failure, validation error)
-        TRANSIENT: Retry-able errors (temporary network issues)
-    """
-    
-    CRITICAL = "CRITICAL"
-    NON_CRITICAL = "NON_CRITICAL"
-    TRANSIENT = "TRANSIENT"
-
-
-def categorize_error(exception: Exception) -> ErrorCategory:
-    """Categorize error for appropriate handling.
-    
-    Determines whether an error should halt workflow (CRITICAL),
-    allow continuation (NON_CRITICAL), or trigger retry (TRANSIENT).
-    
-    Args:
-        exception: Exception that occurred during processing
-        
-    Returns:
-        ErrorCategory indicating how to handle this error
-        
-    Example:
-        >>> try:
-        ...     # some operation
-        ... except Exception as e:
-        ...     category = categorize_error(e)
-        ...     if category == ErrorCategory.CRITICAL:
-        ...         raise  # halt workflow
-    """
-    # CRITICAL errors - halt workflow immediately
-    if isinstance(exception, (ConnectionError, Timeout, SSLError)):
-        return ErrorCategory.CRITICAL
-    
-    if "certificate" in str(exception).lower() or "cert" in str(exception).lower():
-        return ErrorCategory.CRITICAL
-    
-    if "configuration" in str(exception).lower() or "config" in str(exception).lower():
-        return ErrorCategory.CRITICAL
-    
-    # NON_CRITICAL errors - continue processing other patients
-    if isinstance(exception, ValidationError):
-        return ErrorCategory.NON_CRITICAL
-    
-    # Default to NON_CRITICAL for unknown errors
-    return ErrorCategory.NON_CRITICAL
-
-
-def get_remediation_message(exception: Exception) -> str:
-    """Generate actionable remediation message for an error.
-    
-    Provides specific troubleshooting guidance based on error type,
-    following RULE 5 (exceptions must include actionable context).
-    
-    Args:
-        exception: Exception that occurred
-        
-    Returns:
-        Human-readable remediation message with specific guidance
-        
-    Example:
-        >>> remediation = get_remediation_message(ConnectionError("Network unreachable"))
-        >>> print(remediation)
-        Check network connectivity and endpoint URL in configuration.
-    """
-    error_str = str(exception).lower()
-    
-    # SSL/Certificate errors (check before ConnectionError since SSLError may be subclass)
-    if isinstance(exception, SSLError) or "certificate" in error_str:
-        return (
-            "TLS/Certificate validation failed. If using self-signed certificates, "
-            "set verify_tls=false in config.json transport section (development only). "
-            "For production, generate valid certificate with: scripts/generate_cert.sh"
-        )
-    
-    # Connection errors
-    if isinstance(exception, ConnectionError):
-        return (
-            "Check network connectivity and endpoint URL in configuration. "
-            "Verify PIX Add endpoint is running and accessible from this machine. "
-            "Test connectivity with: curl -I <endpoint-url>"
-        )
-    
-    # Timeout errors
-    if isinstance(exception, Timeout):
-        return (
-            "Request timed out. PIX Add endpoint may be slow or overloaded. "
-            "Consider increasing timeout in configuration or check endpoint health. "
-            "Current timeout can be adjusted in config.json transport section."
-        )
-    
-    # Validation errors
-    if isinstance(exception, ValidationError):
-        return (
-            "Fix patient data in CSV file and retry submission. "
-            "Check CSV format against examples/patients_sample.csv for reference."
-        )
-    
-    # Configuration errors
-    if "configuration" in error_str or "config" in error_str:
-        return (
-            "Check configuration file for missing or invalid values. "
-            "Use examples/config.example.json as template. "
-            "Ensure all required fields are present: endpoints, certificates, OIDs."
-        )
-    
-    # Generic error
-    return (
-        "Review error message above for details. "
-        "Check logs/transactions/ for complete request/response XML. "
-        "Consult documentation in docs/ for troubleshooting guidance."
-    )
 
 
 class PIXAddWorkflow:
@@ -191,7 +81,8 @@ class PIXAddWorkflow:
     def process_patient(
         self,
         patient: PatientDemographics,
-        saml_assertion: SAMLAssertion
+        saml_assertion: SAMLAssertion,
+        error_collector: Optional[ErrorSummaryCollector] = None
     ) -> PatientResult:
         """Process single patient through complete PIX Add workflow.
         
@@ -281,12 +172,18 @@ class PIXAddWorkflow:
         except (ConnectionError, Timeout, SSLError) as critical_error:
             # CRITICAL errors - halt workflow
             processing_time_ms = int((time.time() - start_time) * 1000)
-            remediation = get_remediation_message(critical_error)
+            
+            # Create error info with remediation
+            error_info = create_error_info(critical_error, patient_id=patient_id)
             
             logger.error(
                 f"CRITICAL ERROR processing patient {patient_id}: {critical_error}. "
-                f"Remediation: {remediation}"
+                f"Remediation: {error_info.remediation}"
             )
+            
+            # Track error in collector
+            if error_collector:
+                error_collector.add_error(error_info, patient_id)
             
             # Re-raise to halt workflow
             raise
@@ -294,19 +191,25 @@ class PIXAddWorkflow:
         except ValidationError as non_critical_error:
             # NON-CRITICAL errors - continue workflow
             processing_time_ms = int((time.time() - start_time) * 1000)
-            remediation = get_remediation_message(non_critical_error)
+            
+            # Create error info with remediation
+            error_info = create_error_info(non_critical_error, patient_id=patient_id)
             
             logger.warning(
                 f"Patient {patient_id} validation failed: {non_critical_error}. "
-                f"Remediation: {remediation}"
+                f"Remediation: {error_info.remediation}"
             )
+            
+            # Track error in collector
+            if error_collector:
+                error_collector.add_error(error_info, patient_id)
             
             result = PatientResult(
                 patient_id=patient_id,
                 pix_add_status=TransactionStatus.ERROR,
                 pix_add_message=str(non_critical_error),
                 processing_time_ms=processing_time_ms,
-                error_details=f"Validation error: {non_critical_error}. {remediation}"
+                error_details=f"Validation error: {non_critical_error}. {error_info.remediation}"
             )
             
             return result
@@ -314,20 +217,26 @@ class PIXAddWorkflow:
         except Exception as unexpected_error:
             # Unexpected errors - treat as non-critical, continue workflow
             processing_time_ms = int((time.time() - start_time) * 1000)
-            remediation = get_remediation_message(unexpected_error)
+            
+            # Create error info with remediation
+            error_info = create_error_info(unexpected_error, patient_id=patient_id)
             
             logger.error(
                 f"Unexpected error processing patient {patient_id}: {unexpected_error}. "
-                f"Remediation: {remediation}",
+                f"Remediation: {error_info.remediation}",
                 exc_info=True
             )
+            
+            # Track error in collector
+            if error_collector:
+                error_collector.add_error(error_info, patient_id)
             
             result = PatientResult(
                 patient_id=patient_id,
                 pix_add_status=TransactionStatus.ERROR,
                 pix_add_message=f"Unexpected error: {unexpected_error}",
                 processing_time_ms=processing_time_ms,
-                error_details=f"Error: {unexpected_error}. {remediation}"
+                error_details=f"Error: {unexpected_error}. {error_info.remediation}"
             )
             
             return result
@@ -381,13 +290,16 @@ class PIXAddWorkflow:
             saml_assertion = self._generate_saml_assertion()
             logger.info("SAML assertion generated and signed")
             
-            # Step 4: Initialize batch result
+            # Step 4: Initialize batch result and error collector
             batch_result = BatchProcessingResult(
                 batch_id=batch_id,
                 csv_file_path=str(csv_path),
                 start_timestamp=start_timestamp,
                 total_patients=total_patients
             )
+            
+            error_collector = ErrorSummaryCollector()
+            error_collector.set_patient_count(total_patients)
             
             # Step 5: Process patients sequentially
             logger.info(f"Processing {total_patients} patients sequentially")
@@ -400,8 +312,8 @@ class PIXAddWorkflow:
                     # Convert DataFrame row to PatientDemographics
                     patient = self._row_to_patient_demographics(row)
                     
-                    # Process patient through workflow
-                    patient_result = self.process_patient(patient, saml_assertion)
+                    # Process patient through workflow with error tracking
+                    patient_result = self.process_patient(patient, saml_assertion, error_collector)
                     
                     # Aggregate results
                     batch_result.patient_results.append(patient_result)
@@ -434,7 +346,7 @@ class PIXAddWorkflow:
                     # Re-raise critical error
                     raise
             
-            # Step 6: Complete batch processing
+            # Step 6: Complete batch processing and generate error summary
             batch_result.end_timestamp = datetime.now(timezone.utc)
             
             logger.info(
@@ -443,6 +355,22 @@ class PIXAddWorkflow:
                 f"failed={batch_result.failed_patients}, "
                 f"duration={batch_result.duration_seconds:.2f}s"
             )
+            
+            # Generate error summary report if there were errors
+            if batch_result.failed_patients > 0:
+                error_summary = error_collector.get_summary()
+                error_report = generate_error_report(error_summary)
+                
+                logger.info("Error Summary Report:\n" + error_report)
+                
+                # Store error summary in batch result for downstream use
+                batch_result.error_summary["_error_report"] = error_report
+                batch_result.error_summary["_error_statistics"] = {
+                    "total_errors": error_summary.total_errors,
+                    "by_category": error_summary.errors_by_category,
+                    "by_type": error_summary.errors_by_type,
+                    "error_rate": error_summary.error_rate
+                }
             
             return batch_result
             
@@ -474,27 +402,27 @@ class PIXAddWorkflow:
             )
         
         # Check required certificates
-        if not self.config.saml.cert_path:
+        if not self.config.certificates.cert_path:
             raise ValidationError(
-                "Missing required configuration: saml.cert_path. "
+                "Missing required configuration: certificates.cert_path. "
                 "Add certificate path to config.json or generate with: scripts/generate_cert.sh"
             )
         
-        if not Path(self.config.saml.cert_path).exists():
+        if not Path(self.config.certificates.cert_path).exists():
             raise ValidationError(
-                f"Certificate file not found: {self.config.saml.cert_path}. "
+                f"Certificate file not found: {self.config.certificates.cert_path}. "
                 "Generate certificate with: scripts/generate_cert.sh"
             )
         
-        if not self.config.saml.key_path:
+        if not self.config.certificates.key_path:
             raise ValidationError(
-                "Missing required configuration: saml.key_path. "
+                "Missing required configuration: certificates.key_path. "
                 "Add private key path to config.json."
             )
         
-        if not Path(self.config.saml.key_path).exists():
+        if not Path(self.config.certificates.key_path).exists():
             raise ValidationError(
-                f"Private key file not found: {self.config.saml.key_path}. "
+                f"Private key file not found: {self.config.certificates.key_path}. "
                 "Ensure private key exists alongside certificate."
             )
         
@@ -524,19 +452,45 @@ class PIXAddWorkflow:
         """
         logger.debug("Generating SAML assertion")
         
-        # Generate SAML assertion
+        # Generate SAML assertion element
+        # Note: issuer and subject should be configured elsewhere or use defaults
         assertion_element = generate_saml_assertion(
-            issuer=self.config.saml.issuer,
-            subject=self.config.saml.subject
+            issuer="urn:test:issuer",  # TODO: Add to config
+            subject="urn:test:subject"  # TODO: Add to config
+        )
+        
+        # Convert element to SAMLAssertion object
+        assertion_id = assertion_element.get("ID", "")
+        assertion_xml = etree.tostring(assertion_element, encoding='unicode')
+        
+        now = datetime.now(timezone.utc)
+        
+        from ihe_test_util.models.saml import SAMLGenerationMethod
+        
+        unsigned_assertion = SAMLAssertion(
+            assertion_id=assertion_id,
+            xml_content=assertion_xml,
+            issuer="urn:test:issuer",
+            subject="urn:test:subject",
+            audience="urn:test:audience",
+            issue_instant=now,
+            not_before=now,
+            not_on_or_after=now + timedelta(hours=1),
+            signature="",
+            certificate_subject="",
+            generation_method=SAMLGenerationMethod.PROGRAMMATIC
+        )
+        
+        # Load certificate bundle
+        from ihe_test_util.saml.certificate_manager import load_certificate
+        cert_bundle = load_certificate(
+            cert_source=Path(self.config.certificates.cert_path),
+            key_path=Path(self.config.certificates.key_path)
         )
         
         # Sign assertion
-        signer = SAMLSigner(
-            cert_path=Path(self.config.saml.cert_path),
-            key_path=Path(self.config.saml.key_path)
-        )
-        
-        signed_assertion = signer.sign_assertion(assertion_element)
+        signer = SAMLSigner(cert_bundle)
+        signed_assertion = signer.sign_assertion(unsigned_assertion)
         
         logger.debug("SAML assertion signed successfully")
         

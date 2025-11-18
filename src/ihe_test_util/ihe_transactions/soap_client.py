@@ -6,6 +6,7 @@ IHE endpoints with WS-Security authentication, retry logic, and audit logging.
 
 import logging
 import ssl
+import tempfile
 import time
 import uuid
 from datetime import datetime, timezone
@@ -26,7 +27,7 @@ from ihe_test_util.models.responses import (
 from ihe_test_util.models.saml import SAMLAssertion
 from ihe_test_util.saml.ws_security import WSSecurityHeaderBuilder
 from ihe_test_util.ihe_transactions.parsers import parse_acknowledgment
-from ihe_test_util.utils.exceptions import ValidationError
+from ihe_test_util.utils.exceptions import ValidationError, create_error_info
 
 logger = logging.getLogger(__name__)
 
@@ -403,6 +404,49 @@ class PIXAddSOAPClient:
         # Should not reach here, but raise error if we do
         raise RuntimeError("Retry logic error - should not reach this point")
     
+    def _handle_malformed_response(
+        self,
+        response_text: str,
+        error: Exception,
+        request_id: str
+    ) -> str:
+        """Handle malformed response by logging and saving to temp file.
+        
+        Args:
+            response_text: Raw response text
+            error: Exception that occurred during parsing
+            request_id: Request ID for correlation
+            
+        Returns:
+            Path to temp file containing raw response
+        """
+        # Log complete raw response for debugging (RULE 2)
+        logger.error(f"Malformed SOAP response received: {error}")
+        
+        # Truncate in log message if too long
+        if len(response_text) > 1000:
+            logger.error(f"Raw response (truncated): {response_text[:1000]}...")
+        else:
+            logger.error(f"Raw response: {response_text}")
+        
+        # Save full response to temp file for analysis
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode='w',
+                suffix='.xml',
+                prefix=f'malformed_response_{request_id}_',
+                delete=False,
+                dir=Path('logs/transactions')
+            ) as temp_file:
+                temp_file.write(response_text)
+                temp_path = temp_file.name
+            
+            logger.error(f"Full raw response saved to: {temp_path}")
+            return temp_path
+        except Exception as save_error:
+            logger.error(f"Failed to save raw response to temp file: {save_error}")
+            return "Failed to save response"
+    
     def _parse_acknowledgment(
         self,
         response_xml: str,
@@ -458,8 +502,35 @@ class PIXAddSOAPClient:
             
             return transaction_response
             
-        except Exception as e:
-            logger.error(f"Failed to parse acknowledgment response: {e}")
+        except etree.XMLSyntaxError as xml_error:
+            # Malformed XML response
+            logger.error(f"Malformed XML in acknowledgment response: {xml_error}")
+            
+            # Handle malformed response (AC 6)
+            temp_path = self._handle_malformed_response(response_xml, xml_error, request_id)
+            
+            # Return error response with actionable message
+            return TransactionResponse(
+                response_id=str(uuid.uuid4()),
+                request_id=request_id,
+                transaction_type=TransactionType.PIX_ADD,
+                status=TransactionStatus.ERROR,
+                status_code="MALFORMED_XML",
+                response_timestamp=datetime.now(timezone.utc),
+                response_xml=response_xml,
+                error_messages=[
+                    f"Malformed SOAP response. XML parse error: {xml_error}. "
+                    f"Raw response saved to: {temp_path}"
+                ],
+                processing_time_ms=processing_time_ms
+            )
+            
+        except ValueError as parse_error:
+            # Missing required elements or invalid structure
+            logger.error(f"Failed to parse acknowledgment response: {parse_error}")
+            
+            # Handle malformed response
+            temp_path = self._handle_malformed_response(response_xml, parse_error, request_id)
             
             # Return error response
             return TransactionResponse(
@@ -470,7 +541,33 @@ class PIXAddSOAPClient:
                 status_code="PARSE_ERROR",
                 response_timestamp=datetime.now(timezone.utc),
                 response_xml=response_xml,
-                error_messages=[f"Failed to parse acknowledgment: {e}"],
+                error_messages=[
+                    f"Failed to parse acknowledgment: {parse_error}. "
+                    f"Raw response saved to: {temp_path}"
+                ],
+                processing_time_ms=processing_time_ms
+            )
+        
+        except Exception as e:
+            # Unexpected error
+            logger.error(f"Unexpected error parsing acknowledgment response: {e}", exc_info=True)
+            
+            # Handle malformed response
+            temp_path = self._handle_malformed_response(response_xml, e, request_id)
+            
+            # Return error response
+            return TransactionResponse(
+                response_id=str(uuid.uuid4()),
+                request_id=request_id,
+                transaction_type=TransactionType.PIX_ADD,
+                status=TransactionStatus.ERROR,
+                status_code="PARSE_ERROR",
+                response_timestamp=datetime.now(timezone.utc),
+                response_xml=response_xml,
+                error_messages=[
+                    f"Failed to parse acknowledgment: {e}. "
+                    f"Raw response saved to: {temp_path}"
+                ],
                 processing_time_ms=processing_time_ms
             )
     

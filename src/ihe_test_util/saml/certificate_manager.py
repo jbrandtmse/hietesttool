@@ -158,6 +158,132 @@ def check_expiration_warning(
     return False
 
 
+def validate_certificate_not_expired(cert_path: Path) -> ValidationResult:
+    """Validate that certificate has not expired.
+    
+    Checks certificate validity dates and calculates days until expiration.
+    Provides actionable error messages with remediation guidance.
+    
+    Args:
+        cert_path: Path to certificate file
+        
+    Returns:
+        ValidationResult with validation status and remediation guidance
+        
+    Raises:
+        CertificateLoadError: If certificate cannot be loaded
+        
+    Example:
+        >>> result = validate_certificate_not_expired(Path("cert.pem"))
+        >>> if not result.is_valid:
+        ...     print(result.errors[0])
+        Certificate expired on 2024-01-15. Generate new: scripts/generate_cert.sh
+    """
+    errors: List[str] = []
+    warnings: List[str] = []
+    
+    # Load certificate
+    try:
+        cert = load_pem_certificate(cert_path)
+    except CertificateLoadError:
+        # Try other formats
+        if cert_path.suffix.lower() in ['.p12', '.pfx']:
+            cert, _, _ = load_pkcs12_certificate(cert_path)
+        elif cert_path.suffix.lower() == '.der':
+            cert = load_der_certificate(cert_path)
+        else:
+            raise
+    
+    now = datetime.now(timezone.utc)
+    not_before = cert.not_valid_before_utc
+    not_after = cert.not_valid_after_utc
+    
+    # Check not yet valid
+    if now < not_before:
+        errors.append(
+            f"Certificate not yet valid. Valid from: {not_before.strftime('%Y-%m-%d')}. "
+            f"Check system time or use a different certificate."
+        )
+    
+    # Check expired (CRITICAL)
+    if now > not_after:
+        days_expired = (now - not_after).days
+        errors.append(
+            f"Certificate expired {days_expired} days ago on {not_after.strftime('%Y-%m-%d')}. "
+            f"Generate new certificate: scripts/generate_cert.sh. "
+            f"Update config.json with new certificate path."
+        )
+    
+    # Check expiring soon (WARNING - within 30 days)
+    days_until_expiry = (not_after - now).days
+    if 0 < days_until_expiry < 30:
+        warnings.append(
+            f"Certificate expires in {days_until_expiry} days on {not_after.strftime('%Y-%m-%d')}. "
+            f"Generate new certificate soon: scripts/generate_cert.sh"
+        )
+    
+    is_valid = len(errors) == 0
+    
+    return ValidationResult(is_valid=is_valid, errors=errors, warnings=warnings)
+
+
+def validate_certificate_chain(cert_path: Path) -> ValidationResult:
+    """Validate certificate chain of trust.
+    
+    Verifies that certificate has a valid chain and checks for basic
+    certificate chain issues.
+    
+    Args:
+        cert_path: Path to certificate file
+        
+    Returns:
+        ValidationResult with validation status
+        
+    Note:
+        Full chain validation requires CA certificates. This function
+        performs basic validation only.
+        
+    Example:
+        >>> result = validate_certificate_chain(Path("cert.pem"))
+        >>> if result.warnings:
+        ...     for warning in result.warnings:
+        ...         print(warning)
+    """
+    errors: List[str] = []
+    warnings: List[str] = []
+    
+    # Load certificate
+    try:
+        cert = load_pem_certificate(cert_path)
+    except CertificateLoadError:
+        if cert_path.suffix.lower() in ['.p12', '.pfx']:
+            cert, _, chain = load_pkcs12_certificate(cert_path)
+            if not chain:
+                warnings.append(
+                    "No certificate chain found in PKCS12 file. "
+                    "For production use, include full certificate chain."
+                )
+        elif cert_path.suffix.lower() == '.der':
+            cert = load_der_certificate(cert_path)
+            warnings.append(
+                "DER format does not include certificate chain. "
+                "For production, use PKCS12 with full chain or provide separate chain file."
+            )
+        else:
+            raise
+    
+    # Check if self-signed
+    if cert.issuer == cert.subject:
+        warnings.append(
+            "Certificate is self-signed. This is acceptable for development/testing only. "
+            "For production, use certificate from trusted CA."
+        )
+    
+    is_valid = len(errors) == 0
+    
+    return ValidationResult(is_valid=is_valid, errors=errors, warnings=warnings)
+
+
 def validate_certificate(cert: x509.Certificate) -> ValidationResult:
     """Validate certificate for use in signing operations.
 
@@ -189,9 +315,11 @@ def validate_certificate(cert: x509.Certificate) -> ValidationResult:
 
     # Check expired
     if cert.not_valid_after_utc < now:
+        days_expired = (now - cert.not_valid_after_utc).days
         errors.append(
-            f"Certificate expired on "
-            f"{cert.not_valid_after_utc.strftime('%Y-%m-%d %H:%M:%S UTC')}"
+            f"Certificate expired {days_expired} days ago on "
+            f"{cert.not_valid_after_utc.strftime('%Y-%m-%d %H:%M:%S UTC')}. "
+            f"Generate new certificate: scripts/generate_cert.sh"
         )
 
     # Check expiration warning (< 30 days)
@@ -200,7 +328,8 @@ def validate_certificate(cert: x509.Certificate) -> ValidationResult:
         days_remaining = (cert.not_valid_after_utc - now).days
         warnings.append(
             f"Certificate expires in {days_remaining} days "
-            f"({cert.not_valid_after_utc.strftime('%Y-%m-%d')})"
+            f"({cert.not_valid_after_utc.strftime('%Y-%m-%d')}). "
+            f"Generate new certificate soon: scripts/generate_cert.sh"
         )
 
     is_valid = len(errors) == 0

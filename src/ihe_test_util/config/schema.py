@@ -174,6 +174,10 @@ class Config(BaseModel):
         certificates: Certificate and key paths configuration
         transport: HTTP/HTTPS transport configuration
         logging: Logging configuration
+        sender_oid: Sender facility OID
+        receiver_oid: Receiver facility OID
+        sender_application: Sender application identifier
+        receiver_application: Receiver application identifier
         
     Example:
         >>> config = Config(
@@ -190,3 +194,9 @@ class Config(BaseModel):
     certificates: CertificatesConfig = CertificatesConfig()
     transport: TransportConfig = TransportConfig()
     logging: LoggingConfig = LoggingConfig()
+    
+    # OID configuration
+    sender_oid: str = Field(default="1.2.3.4.5", description="Sender facility OID")
+    receiver_oid: str = Field(default="1.2.3.4.6", description="Receiver facility OID")
+    sender_application: str = Field(default="TEST_APP", description="Sender application identifier")
+    receiver_application: str = Field(default="RECEIVER_APP", description="Receiver application identifier")

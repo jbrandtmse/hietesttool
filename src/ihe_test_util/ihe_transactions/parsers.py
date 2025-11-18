@@ -12,8 +12,69 @@ logger = logging.getLogger(__name__)
 # HL7v3 namespaces
 HL7_NS = "urn:hl7-org:v3"
 
+# SOAP namespaces
+SOAP_NS = "http://www.w3.org/2003/05/soap-envelope"
+SOAP_11_NS = "http://schemas.xmlsoap.org/soap/envelope/"
+
 # Audit logger for acknowledgment responses
 audit_logger = logging.getLogger('ihe_test_util.audit.acknowledgments')
+
+
+@dataclass
+class SOAPFaultInfo:
+    """Parsed SOAP fault information.
+    
+    Attributes:
+        fault_code: SOAP fault code (e.g., "SOAP-ENV:Sender", "SOAP-ENV:Receiver")
+        fault_string: Human-readable fault message
+        fault_detail: Optional detailed fault information
+        fault_actor: Optional fault actor/role
+        subcodes: Optional list of fault subcodes
+        
+    Example:
+        >>> fault_info = parse_soap_fault(response_xml)
+        >>> print(fault_info.fault_code)
+        SOAP-ENV:Sender
+        >>> print(fault_info.fault_string)
+        Invalid SAML assertion
+    """
+    
+    fault_code: str
+    fault_string: str
+    fault_detail: Optional[str] = None
+    fault_actor: Optional[str] = None
+    subcodes: List[str] = None
+    
+    def __post_init__(self):
+        """Initialize subcodes list if None."""
+        if self.subcodes is None:
+            self.subcodes = []
+
+
+@dataclass
+class HL7ErrorInfo:
+    """HL7v3 acknowledgment error information.
+    
+    Attributes:
+        code: HL7 error code (e.g., "204", "205")
+        text: Human-readable error message
+        location: Optional XPath location of error in message
+        severity: Error severity (E=Error, W=Warning, I=Info)
+        code_system: Optional code system OID
+        
+    Example:
+        >>> error_info = HL7ErrorInfo(
+        ...     code="204",
+        ...     text="Unknown key identifier",
+        ...     severity="E"
+        ... )
+    """
+    
+    code: Optional[str]
+    text: str
+    location: Optional[str] = None
+    severity: str = "E"
+    code_system: Optional[str] = None
 
 
 def log_acknowledgment_response(response_xml: str, status: str, message_id: str) -> None:
@@ -442,6 +503,174 @@ def parse_acknowledgment(ack_xml: str) -> AcknowledgmentResponse:
     )
     
     return response
+
+
+def parse_soap_fault(fault_xml: str) -> SOAPFaultInfo:
+    """Parse SOAP fault from response XML.
+    
+    Parses both SOAP 1.1 and SOAP 1.2 fault structures, extracting
+    fault code, fault string, details, and actor information.
+    
+    Args:
+        fault_xml: XML string containing SOAP envelope with fault
+        
+    Returns:
+        SOAPFaultInfo with parsed fault details
+        
+    Raises:
+        ValueError: If XML is malformed or not a SOAP fault
+        
+    Example:
+        >>> fault_info = parse_soap_fault(response_xml)
+        >>> print(f"Fault: {fault_info.fault_code} - {fault_info.fault_string}")
+    """
+    logger.info("Parsing SOAP fault")
+    
+    try:
+        # Parse XML
+        if isinstance(fault_xml, bytes):
+            root = etree.fromstring(fault_xml)
+        else:
+            root = etree.fromstring(fault_xml.encode("utf-8"))
+    except etree.XMLSyntaxError as e:
+        raise ValueError(
+            f"Invalid SOAP fault XML: {e}. "
+            "Response is not valid XML."
+        ) from e
+    
+    # Try SOAP 1.2 first, then SOAP 1.1
+    fault_elem = root.find(f".//{{{SOAP_NS}}}Fault")
+    soap_version = "1.2"
+    
+    if fault_elem is None:
+        fault_elem = root.find(f".//{{{SOAP_11_NS}}}Fault")
+        soap_version = "1.1"
+    
+    if fault_elem is None:
+        raise ValueError(
+            "No SOAP Fault element found in response. "
+            "Expected <SOAP-ENV:Fault> element in SOAP envelope."
+        )
+    
+    logger.debug(f"Parsing SOAP {soap_version} fault")
+    
+    # Parse based on SOAP version
+    if soap_version == "1.2":
+        fault_info = _parse_soap_12_fault(fault_elem)
+    else:
+        fault_info = _parse_soap_11_fault(fault_elem)
+    
+    # Log complete fault for audit trail (RULE 2)
+    logger.error(
+        f"SOAP Fault received - Code: {fault_info.fault_code}, "
+        f"Message: {fault_info.fault_string}"
+    )
+    
+    if fault_info.fault_detail:
+        logger.error(f"Fault Detail: {fault_info.fault_detail}")
+    
+    if fault_info.subcodes:
+        logger.error(f"Fault Subcodes: {', '.join(fault_info.subcodes)}")
+    
+    return fault_info
+
+
+def _parse_soap_12_fault(fault_elem: etree.Element) -> SOAPFaultInfo:
+    """Parse SOAP 1.2 fault structure.
+    
+    Args:
+        fault_elem: SOAP:Fault element
+        
+    Returns:
+        SOAPFaultInfo with parsed fault details
+    """
+    # Extract fault code
+    code_elem = fault_elem.find(f".//{{{SOAP_NS}}}Code/{{{SOAP_NS}}}Value")
+    fault_code = code_elem.text if code_elem is not None else "Unknown"
+    
+    # Extract subcodes
+    subcodes = []
+    subcode_elems = fault_elem.findall(f".//{{{SOAP_NS}}}Subcode/{{{SOAP_NS}}}Value")
+    for subcode_elem in subcode_elems:
+        if subcode_elem.text:
+            subcodes.append(subcode_elem.text)
+    
+    # Extract fault string (reason)
+    reason_elem = fault_elem.find(f".//{{{SOAP_NS}}}Reason/{{{SOAP_NS}}}Text")
+    fault_string = reason_elem.text if reason_elem is not None else "No fault message provided"
+    
+    # Extract fault detail
+    detail_elem = fault_elem.find(f".//{{{SOAP_NS}}}Detail")
+    fault_detail = None
+    if detail_elem is not None:
+        # Get text content or serialize children
+        if detail_elem.text and detail_elem.text.strip():
+            fault_detail = detail_elem.text.strip()
+        else:
+            # Serialize child elements
+            detail_parts = []
+            for child in detail_elem:
+                if child.text and child.text.strip():
+                    detail_parts.append(child.text.strip())
+            if detail_parts:
+                fault_detail = "; ".join(detail_parts)
+    
+    # Extract fault actor (role in SOAP 1.2)
+    role_elem = fault_elem.find(f".//{{{SOAP_NS}}}Role")
+    fault_actor = role_elem.text if role_elem is not None else None
+    
+    return SOAPFaultInfo(
+        fault_code=fault_code,
+        fault_string=fault_string,
+        fault_detail=fault_detail,
+        fault_actor=fault_actor,
+        subcodes=subcodes
+    )
+
+
+def _parse_soap_11_fault(fault_elem: etree.Element) -> SOAPFaultInfo:
+    """Parse SOAP 1.1 fault structure.
+    
+    Args:
+        fault_elem: SOAP:Fault element
+        
+    Returns:
+        SOAPFaultInfo with parsed fault details
+    """
+    # Extract faultcode
+    faultcode_elem = fault_elem.find("faultcode")
+    fault_code = faultcode_elem.text if faultcode_elem is not None else "Unknown"
+    
+    # Extract faultstring
+    faultstring_elem = fault_elem.find("faultstring")
+    fault_string = faultstring_elem.text if faultstring_elem is not None else "No fault message provided"
+    
+    # Extract detail
+    detail_elem = fault_elem.find("detail")
+    fault_detail = None
+    if detail_elem is not None:
+        if detail_elem.text and detail_elem.text.strip():
+            fault_detail = detail_elem.text.strip()
+        else:
+            # Serialize child elements
+            detail_parts = []
+            for child in detail_elem:
+                if child.text and child.text.strip():
+                    detail_parts.append(child.text.strip())
+            if detail_parts:
+                fault_detail = "; ".join(detail_parts)
+    
+    # Extract faultactor
+    faultactor_elem = fault_elem.find("faultactor")
+    fault_actor = faultactor_elem.text if faultactor_elem is not None else None
+    
+    return SOAPFaultInfo(
+        fault_code=fault_code,
+        fault_string=fault_string,
+        fault_detail=fault_detail,
+        fault_actor=fault_actor,
+        subcodes=[]
+    )
 
 
 def parse_pix_add_acknowledgment(ack_xml: str) -> AcknowledgmentResponse:
