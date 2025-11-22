@@ -542,23 +542,26 @@ class TestSAMLGenerateCommand:
         mock_load_template.return_value = "<saml:Assertion>...</saml:Assertion>"
         mock_personalizer = mock_personalizer_class.return_value
         
-        from ihe_test_util.models.saml import SAMLAssertion, SAMLGenerationMethod
-        from datetime import datetime, timezone
+        from datetime import datetime, timezone, timedelta
         
-        mock_assertion = SAMLAssertion(
-            assertion_id="test-id",
-            issuer="https://idp.example.com",
-            subject="user@example.com",
-            audience="https://sp.example.com",
-            issue_instant=datetime.now(timezone.utc),
-            not_before=datetime.now(timezone.utc),
-            not_on_or_after=datetime.now(timezone.utc),
-            xml_content="<saml:Assertion>...</saml:Assertion>",
-            signature="",
-            certificate_subject="",
-            generation_method=SAMLGenerationMethod.TEMPLATE,
-        )
-        mock_personalizer.personalize.return_value = mock_assertion
+        # Create valid SAML XML with proper timestamps
+        now = datetime.now(timezone.utc)
+        not_before = now - timedelta(minutes=1)
+        not_on_or_after = now + timedelta(minutes=5)
+        
+        # The personalize method should return XML string, not SAMLAssertion
+        mock_xml = f'''<saml:Assertion xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion" ID="test-id" IssueInstant="{now.strftime('%Y-%m-%dT%H:%M:%SZ')}">
+    <saml:Issuer>https://idp.example.com</saml:Issuer>
+    <saml:Subject>
+        <saml:NameID>user@example.com</saml:NameID>
+    </saml:Subject>
+    <saml:Conditions NotBefore="{not_before.strftime('%Y-%m-%dT%H:%M:%SZ')}" NotOnOrAfter="{not_on_or_after.strftime('%Y-%m-%dT%H:%M:%SZ')}">
+        <saml:AudienceRestriction>
+            <saml:Audience>https://sp.example.com</saml:Audience>
+        </saml:AudienceRestriction>
+    </saml:Conditions>
+</saml:Assertion>'''
+        mock_personalizer.personalize.return_value = mock_xml
 
         # Act
         result = runner.invoke(
@@ -744,8 +747,8 @@ class TestSAMLVerifyCommand:
         # Assert
         assert result.exit_code == 2  # Click file validation error
 
-    @patch("ihe_test_util.cli.saml_commands.SAMLVerifier")
-    def test_verify_valid_signed_assertion(self, mock_verifier_class, tmp_path):
+    @patch("ihe_test_util.cli.saml_commands.XMLVerifier")
+    def test_verify_valid_signed_assertion(self, mock_xml_verifier_class, tmp_path):
         """Test verify with valid signed SAML assertion."""
         # Arrange
         runner = CliRunner()
@@ -774,8 +777,9 @@ class TestSAMLVerifyCommand:
 </saml:Assertion>"""
         saml_file.write_text(saml_content)
         
-        mock_verifier = mock_verifier_class.return_value
-        mock_verifier.verify_signature.return_value = True
+        # Mock XMLVerifier - the verify method is called on the instance
+        mock_verifier_instance = mock_xml_verifier_class.return_value
+        mock_verifier_instance.verify.return_value = None  # verify() returns verified data on success
 
         # Act
         result = runner.invoke(cli, ["saml", "verify", str(saml_file)])

@@ -61,6 +61,11 @@ def integration_config(tmp_path):
     config.transport = Mock()
     config.transport.verify_tls = False  # For mock server
     
+    # Certificates (required by workflow validation)
+    config.certificates = Mock()
+    config.certificates.cert_path = "tests/fixtures/test_cert.pem"
+    config.certificates.key_path = "tests/fixtures/test_key.pem"
+    
     return config
 
 

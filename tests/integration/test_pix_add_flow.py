@@ -1,13 +1,16 @@
 """Integration tests for PIX Add (ITI-44) workflow."""
 
+from datetime import date
+
 import pytest
 import requests
 from pathlib import Path
 from lxml import etree
-from src.ihe_test_util.ihe_transactions.pix_add import (
+from ihe_test_util.ihe_transactions.pix_add import (
     PatientDemographics,
     build_pix_add_message,
 )
+from ihe_test_util.utils.exceptions import ValidationError
 
 
 @pytest.fixture
@@ -21,16 +24,15 @@ def sample_patient():
     """Sample patient demographics."""
     return PatientDemographics(
         patient_id="PAT123456",
-        patient_id_root="2.16.840.1.113883.3.72.5.9.1",
-        given_name="John",
-        family_name="Doe",
+        patient_id_oid="2.16.840.1.113883.3.72.5.9.1",
+        first_name="John",
+        last_name="Doe",
         gender="M",
-        birth_date="19800101",
-        street_address="123 Main Street",
+        dob=date(1980, 1, 1),
+        address="123 Main Street",
         city="Portland",
         state="OR",
-        postal_code="97201",
-        country="US",
+        zip="97201",
     )
 
 
@@ -108,15 +110,15 @@ def test_pix_add_invalid_gender():
     # Arrange
     invalid_patient = PatientDemographics(
         patient_id="PAT123",
-        patient_id_root="2.16.840.1.113883.3.72.5.9.1",
-        given_name="Test",
-        family_name="Patient",
+        patient_id_oid="2.16.840.1.113883.3.72.5.9.1",
+        first_name="Test",
+        last_name="Patient",
         gender="X",  # Invalid gender
-        birth_date="19800101",
+        dob=date(1980, 1, 1),
     )
     
     # Act & Assert
-    with pytest.raises(ValueError, match="Invalid gender"):
+    with pytest.raises(ValidationError, match="Invalid gender"):
         build_pix_add_message(invalid_patient)
 
 

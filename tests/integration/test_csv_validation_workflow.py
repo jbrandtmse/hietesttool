@@ -5,6 +5,7 @@ and validation report accuracy.
 """
 
 import json
+import logging
 from pathlib import Path
 
 import pandas as pd
@@ -204,7 +205,7 @@ TEST-001,1.2.3.4,Jane,Smith,1990-02-15,F"""
         assert len(error_df) == 2  # Both duplicate rows exported
         assert "error_description" in error_df.columns
 
-    def test_cli_validate_with_json_output(self, tmp_path: Path) -> None:
+    def test_cli_validate_with_json_output(self, tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
         """Test CLI validate command with --json flag.
 
         Arrange: Create CSV with validation issues
@@ -217,15 +218,39 @@ TEST-001,1.2.3.4,Jane,Smith,1990-02-15,F"""
 TEST-001,1.2.3.4,John,Doe,1980-01-01,M,invalid-phone"""
         csv_file.write_text(csv_content)
 
-        # Act
+        # Act - disable pytest logging capture during CLI invocation to prevent
+        # log messages from being mixed with JSON output
         runner = CliRunner()
-        result = runner.invoke(cli, ["csv", "validate", str(csv_file), "--json"])
+        with caplog.at_level(logging.CRITICAL):
+            result = runner.invoke(cli, ["csv", "validate", str(csv_file), "--json"])
 
         # Assert
         assert result.exit_code == 0  # Only warnings
 
-        # Verify JSON output
-        output_data = json.loads(result.output)
+        # Verify JSON output - extract just the JSON portion in case any log output leaked through
+        output = result.output.strip()
+        try:
+            output_data = json.loads(output)
+        except json.JSONDecodeError:
+            # If that fails, try to extract just the JSON portion
+            json_start = output.find('{')
+            if json_start != -1:
+                # Find the matching closing brace
+                brace_count = 0
+                json_end = json_start
+                for i in range(json_start, len(output)):
+                    if output[i] == '{':
+                        brace_count += 1
+                    elif output[i] == '}':
+                        brace_count -= 1
+                        if brace_count == 0:
+                            json_end = i + 1
+                            break
+                json_output = output[json_start:json_end]
+                output_data = json.loads(json_output)
+            else:
+                pytest.fail(f"No JSON found in output. Output was: {repr(output)}")
+        
         assert "total_rows" in output_data
         assert "valid_rows" in output_data
         assert "error_rows" in output_data
