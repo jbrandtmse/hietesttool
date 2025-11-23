@@ -226,6 +226,41 @@ class IHETransactionError(IHETestUtilError):
     pass
 
 
+class ITI41TransportError(IHETransactionError):
+    """Raised when ITI-41 transport/network errors occur.
+    
+    Examples:
+        - Connection timeout after all retries
+        - Network unreachable
+        - Max retries exceeded
+    """
+
+    pass
+
+
+class ITI41SOAPError(IHETransactionError):
+    """Raised when ITI-41 SOAP fault response received.
+    
+    Examples:
+        - Server returned SOAP fault
+        - Invalid SOAP response structure
+        - WS-Security rejection
+    """
+
+    pass
+
+
+class ITI41TimeoutError(ITI41TransportError):
+    """Raised when ITI-41 request timeout exceeded.
+    
+    Examples:
+        - Request took longer than configured timeout
+        - Server did not respond in time
+    """
+
+    pass
+
+
 class ErrorCategory(Enum):
     """Error categorization for handling strategy.
     
