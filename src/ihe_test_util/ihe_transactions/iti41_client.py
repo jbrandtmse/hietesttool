@@ -18,6 +18,10 @@ import requests
 from lxml import etree
 
 from ihe_test_util.ihe_transactions.mtom import MTOMPackage, MTOMAttachment
+from ihe_test_util.ihe_transactions.parsers import (
+    parse_registry_response,
+    RegistryResponse,
+)
 from ihe_test_util.logging_audit.audit import log_transaction
 from ihe_test_util.models.responses import (
     TransactionResponse,
@@ -221,28 +225,63 @@ class ITI41SOAPClient:
                 message_id=message_id,
             )
             
-            # Parse response
-            parsed_response = self._parse_registry_response(response.text)
+            # Parse response using new parser from parsers module
+            try:
+                parsed_response = parse_registry_response(response.text)
+            except ValueError as e:
+                # Fall back to error response if parsing fails
+                logger.error(f"Failed to parse registry response: {e}")
+                return TransactionResponse(
+                    response_id=str(uuid.uuid4()),
+                    request_id=message_id,
+                    transaction_type=TransactionType.ITI_41,
+                    status=TransactionStatus.ERROR,
+                    status_code="ParseError",
+                    response_timestamp=datetime.now(timezone.utc),
+                    response_xml=response.text,
+                    extracted_identifiers={},
+                    error_messages=[str(e)],
+                    processing_time_ms=processing_time_ms,
+                )
             
-            # Check correlation
-            correlation_matched = self._correlate_response(
-                response_xml=response.text,
-                request_message_id=message_id,
-            )
+            # Check correlation (using request_id from parsed response)
+            if parsed_response.request_id and parsed_response.request_id != message_id:
+                logger.warning(
+                    f"Response correlation mismatch: expected={message_id}, "
+                    f"got={parsed_response.request_id}"
+                )
+            elif parsed_response.request_id:
+                logger.debug(f"Response correlation matched: {message_id}")
             
-            # Build TransactionResponse
-            status = self._map_registry_status(parsed_response.get("status", ""))
+            # Map RegistryResponse to TransactionResponse
+            status = self._map_registry_status_from_parsed(parsed_response)
+            
+            # Build identifiers dict from parsed response
+            identifiers = {}
+            if parsed_response.document_ids:
+                identifiers["document_ids"] = parsed_response.document_ids
+            if parsed_response.submission_set_id:
+                identifiers["submission_set_id"] = parsed_response.submission_set_id
+            
+            # Build error messages from parsed errors
+            error_messages = [
+                f"[{e.severity}] {e.error_code}: {e.code_context}"
+                for e in parsed_response.errors
+            ]
+            # Add warnings as well for visibility
+            for w in parsed_response.warnings:
+                error_messages.append(f"[Warning] {w.error_code}: {w.code_context}")
             
             return TransactionResponse(
-                response_id=parsed_response.get("response_id", str(uuid.uuid4())),
+                response_id=parsed_response.response_id or str(uuid.uuid4()),
                 request_id=message_id,
                 transaction_type=TransactionType.ITI_41,
                 status=status,
-                status_code=parsed_response.get("status", ""),
+                status_code=parsed_response.status,
                 response_timestamp=datetime.now(timezone.utc),
                 response_xml=response.text,
-                extracted_identifiers=parsed_response.get("identifiers", {}),
-                error_messages=parsed_response.get("errors", []),
+                extracted_identifiers=identifiers,
+                error_messages=error_messages,
                 processing_time_ms=processing_time_ms,
             )
             
@@ -558,97 +597,23 @@ class ITI41SOAPClient:
             logger.warning(f"Failed to parse response for correlation: {e}")
             return False
 
-    def _parse_registry_response(self, response_xml: str) -> dict:
-        """Parse XDSb RegistryResponse from SOAP response.
+    def _map_registry_status_from_parsed(
+        self, parsed_response: RegistryResponse
+    ) -> TransactionStatus:
+        """Map parsed RegistryResponse status to TransactionStatus.
         
         Args:
-            response_xml: SOAP response XML string
-            
-        Returns:
-            Dictionary with:
-                - status: Registry response status
-                - response_id: Response message ID
-                - identifiers: Extracted document/submission IDs
-                - errors: List of error messages
-        """
-        result = {
-            "status": "",
-            "response_id": "",
-            "identifiers": {},
-            "errors": [],
-        }
-        
-        try:
-            root = etree.fromstring(response_xml.encode("utf-8"))
-            
-            # Find RegistryResponse
-            registry_response = root.find(f".//{{{RS_NS}}}RegistryResponse")
-            
-            if registry_response is not None:
-                # Extract status
-                status = registry_response.get("status", "")
-                result["status"] = status
-                
-                # Extract response ID from WS-Addressing
-                msg_id = root.find(f".//{{{WSA_NS}}}MessageID")
-                if msg_id is not None and msg_id.text:
-                    result["response_id"] = msg_id.text
-                
-                # Extract errors from RegistryErrorList
-                error_list = registry_response.find(f".//{{{RS_NS}}}RegistryErrorList")
-                if error_list is not None:
-                    for error in error_list.findall(f".//{{{RS_NS}}}RegistryError"):
-                        error_code = error.get("errorCode", "Unknown")
-                        code_context = error.get("codeContext", "")
-                        severity = error.get("severity", "")
-                        
-                        error_msg = f"[{severity}] {error_code}: {code_context}"
-                        result["errors"].append(error_msg)
-                
-                logger.debug(
-                    f"Parsed registry response: status={status}, "
-                    f"error_count={len(result['errors'])}"
-                )
-            else:
-                # Check for SOAP Fault
-                fault = root.find(f".//{{{SOAP12_NS}}}Fault")
-                if fault is not None:
-                    fault_code = fault.find(f".//{{{SOAP12_NS}}}Code/{{{SOAP12_NS}}}Value")
-                    fault_reason = fault.find(f".//{{{SOAP12_NS}}}Reason/{{{SOAP12_NS}}}Text")
-                    
-                    code_text = fault_code.text if fault_code is not None else "Unknown"
-                    reason_text = fault_reason.text if fault_reason is not None else "Unknown error"
-                    
-                    result["status"] = REGISTRY_FAILURE
-                    result["errors"].append(f"SOAP Fault: {code_text} - {reason_text}")
-                    
-                    logger.warning(f"SOAP Fault received: {code_text} - {reason_text}")
-                else:
-                    logger.warning("No RegistryResponse or SOAP Fault found in response")
-                    result["status"] = "Unknown"
-                    
-        except etree.XMLSyntaxError as e:
-            logger.error(f"Failed to parse registry response: {e}")
-            result["status"] = "ParseError"
-            result["errors"].append(f"XML parse error: {e}")
-        
-        return result
-
-    def _map_registry_status(self, status: str) -> TransactionStatus:
-        """Map XDSb registry status to TransactionStatus.
-        
-        Args:
-            status: XDSb registry response status URI
+            parsed_response: Parsed RegistryResponse from parsers module
             
         Returns:
             Corresponding TransactionStatus enum value
         """
-        if status == REGISTRY_SUCCESS:
+        if parsed_response.is_success:
             return TransactionStatus.SUCCESS
-        elif status == REGISTRY_PARTIAL_SUCCESS:
+        elif parsed_response.status == "PartialSuccess":
             return TransactionStatus.PARTIAL_SUCCESS
-        elif status == REGISTRY_FAILURE:
+        elif parsed_response.status == "Failure":
             return TransactionStatus.ERROR
         else:
-            logger.warning(f"Unknown registry status: {status}")
+            logger.warning(f"Unknown registry status: {parsed_response.status}")
             return TransactionStatus.ERROR

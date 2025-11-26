@@ -1,7 +1,7 @@
 """Response parsers for IHE transactions (acknowledgments and registry responses)."""
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, List
@@ -16,8 +16,28 @@ HL7_NS = "urn:hl7-org:v3"
 SOAP_NS = "http://www.w3.org/2003/05/soap-envelope"
 SOAP_11_NS = "http://schemas.xmlsoap.org/soap/envelope/"
 
-# Audit logger for acknowledgment responses
+# XDSb/ebXML namespaces
+RS_NS = "urn:oasis:names:tc:ebxml-regrep:xsd:rs:3.0"
+RIM_NS = "urn:oasis:names:tc:ebxml-regrep:xsd:rim:3.0"
+WSA_NS = "http://www.w3.org/2005/08/addressing"
+
+# XDSb Registry Response status URIs
+REGISTRY_SUCCESS = "urn:oasis:names:tc:ebxml-regrep:ResponseStatusType:Success"
+REGISTRY_FAILURE = "urn:oasis:names:tc:ebxml-regrep:ResponseStatusType:Failure"
+REGISTRY_PARTIAL_SUCCESS = "urn:oasis:names:tc:ebxml-regrep:ResponseStatusType:PartialSuccess"
+
+# XDSb Error Severity URIs
+ERROR_SEVERITY_ERROR = "urn:oasis:names:tc:ebxml-regrep:ErrorSeverityType:Error"
+ERROR_SEVERITY_WARNING = "urn:oasis:names:tc:ebxml-regrep:ErrorSeverityType:Warning"
+
+# XDSb Identification Scheme UUIDs (IHE ITI TF-3)
+DOCUMENT_UNIQUE_ID_SCHEME = "urn:uuid:2e82c1f6-a085-4c72-9da3-8640a32e42ab"
+SUBMISSION_SET_UNIQUE_ID_SCHEME = "urn:uuid:96fdda7c-d067-4183-912e-bf5ee74998a8"
+PATIENT_ID_SCHEME = "urn:uuid:6b5aea1a-874d-4603-a4bc-96a0a7b38446"
+
+# Audit loggers
 audit_logger = logging.getLogger('ihe_test_util.audit.acknowledgments')
+registry_audit_logger = logging.getLogger('ihe_test_util.audit.registry')
 
 
 @dataclass
@@ -692,21 +712,488 @@ def parse_pix_add_acknowledgment(ack_xml: str) -> AcknowledgmentResponse:
     return parse_acknowledgment(ack_xml)
 
 
-def parse_registry_response(response_xml: str) -> dict:
-    """Parse XDS registry response (for ITI-41, ITI-43).
+@dataclass
+class RegistryErrorInfo:
+    """XDSb registry error information.
     
-    This is a placeholder for future implementation when ITI-41 is developed.
+    Represents an error or warning from an XDSb RegistryResponse.
+    
+    Attributes:
+        error_code: XDSb error code (e.g., "XDSMissingDocument", "XDSPatientIdDoesNotMatch")
+        code_context: Human-readable error context message
+        severity: Error severity ("Error" or "Warning")
+        location: Optional location reference within the request
+        
+    Example:
+        >>> error_info = RegistryErrorInfo(
+        ...     error_code="XDSMissingDocument",
+        ...     code_context="Document with id 'doc001' not found",
+        ...     severity="Error"
+        ... )
+    """
+    
+    error_code: str
+    code_context: str
+    severity: str = "Error"
+    location: Optional[str] = None
+
+
+@dataclass
+class RegistryResponse:
+    """Parsed XDSb registry response.
+    
+    Contains the parsed results from an ITI-41 (Provide and Register Document Set-b)
+    registry response, including status, document identifiers, and error details.
+    
+    Attributes:
+        status: Registry response status (Success, Failure, PartialSuccess)
+        is_success: True if status indicates success
+        response_id: Optional response message ID from WS-Addressing
+        submission_set_id: Optional submission set unique ID
+        document_ids: List of document unique IDs from successful submissions
+        errors: List of RegistryErrorInfo for errors
+        warnings: List of RegistryErrorInfo for warnings
+        request_id: Optional request ID for correlation (from RelatesTo header)
+        
+    Example:
+        >>> response = parse_registry_response(response_xml)
+        >>> if response.is_success:
+        ...     logger.info(f"Documents submitted: {response.document_ids}")
+        >>> else:
+        ...     for error in response.errors:
+        ...         logger.error(f"{error.error_code}: {error.code_context}")
+    """
+    
+    status: str
+    is_success: bool
+    response_id: Optional[str] = None
+    submission_set_id: Optional[str] = None
+    document_ids: List[str] = field(default_factory=list)
+    errors: List[RegistryErrorInfo] = field(default_factory=list)
+    warnings: List[RegistryErrorInfo] = field(default_factory=list)
+    request_id: Optional[str] = None
+    
+    def to_dict(self) -> dict:
+        """Convert to dictionary for JSON serialization.
+        
+        Returns:
+            Dictionary representation of the registry response.
+            
+        Example:
+            >>> response = RegistryResponse(status="Success", is_success=True)
+            >>> data = response.to_dict()
+            >>> print(data["status"])
+            Success
+        """
+        return {
+            "status": self.status,
+            "is_success": self.is_success,
+            "response_id": self.response_id,
+            "submission_set_id": self.submission_set_id,
+            "document_ids": self.document_ids,
+            "errors": [
+                {
+                    "error_code": e.error_code,
+                    "code_context": e.code_context,
+                    "severity": e.severity,
+                    "location": e.location,
+                }
+                for e in self.errors
+            ],
+            "warnings": [
+                {
+                    "error_code": w.error_code,
+                    "code_context": w.code_context,
+                    "severity": w.severity,
+                    "location": w.location,
+                }
+                for w in self.warnings
+            ],
+            "request_id": self.request_id,
+        }
+
+
+def log_registry_response(
+    response_xml: str,
+    status: str,
+    submission_set_id: Optional[str] = None,
+) -> None:
+    """Log complete registry response to audit trail.
+    
+    Logs ITI-41 and other XDSb registry responses to dedicated audit file.
+    Follows RULE 2: All IHE transactions MUST log complete request/response.
     
     Args:
-        response_xml: XML string containing the registry response
+        response_xml: Complete SOAP/XML response
+        status: Registry response status (Success, Failure, PartialSuccess)
+        submission_set_id: Optional submission set ID for correlation
+        
+    Example:
+        >>> log_registry_response(response_xml, "Success", "1.2.3.4.5.6")
+    """
+    # Ensure log directory exists
+    log_dir = Path("logs/transactions")
+    log_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Create dated log file
+    log_file = log_dir / f"iti41-responses-{datetime.now().strftime('%Y%m%d')}.log"
+    
+    # Configure audit logger if not already configured
+    if not registry_audit_logger.handlers:
+        handler = logging.FileHandler(log_file)
+        handler.setFormatter(logging.Formatter(
+            '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        ))
+        registry_audit_logger.addHandler(handler)
+        registry_audit_logger.setLevel(logging.DEBUG)
+    
+    # Log summary at INFO level
+    submission_info = f", SubmissionSetID: {submission_set_id}" if submission_set_id else ""
+    registry_audit_logger.info(
+        f"ITI-41 Registry Response - Status: {status}{submission_info}, "
+        f"Size: {len(response_xml)} bytes"
+    )
+    
+    # Log complete response XML at DEBUG level (RULE 2)
+    registry_audit_logger.debug(
+        f"Response XML (SubmissionSetID: {submission_set_id}):\n{response_xml}"
+    )
+
+
+def _map_registry_status_to_string(status_uri: str) -> str:
+    """Map XDSb registry status URI to human-readable string.
+    
+    Args:
+        status_uri: XDSb registry status URI
         
     Returns:
-        Dictionary with parsed response data
+        Human-readable status string: Success, Failure, or PartialSuccess
+    """
+    if status_uri == REGISTRY_SUCCESS:
+        return "Success"
+    elif status_uri == REGISTRY_FAILURE:
+        return "Failure"
+    elif status_uri == REGISTRY_PARTIAL_SUCCESS:
+        return "PartialSuccess"
+    else:
+        # Log unknown status but return it as-is
+        logger.warning(f"Unknown registry status URI: {status_uri}")
+        return status_uri
+
+
+def _map_error_severity_to_string(severity_uri: str) -> str:
+    """Map XDSb error severity URI to human-readable string.
+    
+    Args:
+        severity_uri: XDSb error severity URI
+        
+    Returns:
+        Human-readable severity string: Error or Warning
+    """
+    if severity_uri == ERROR_SEVERITY_ERROR:
+        return "Error"
+    elif severity_uri == ERROR_SEVERITY_WARNING:
+        return "Warning"
+    else:
+        # Extract last part of URI or return as-is
+        if ":" in severity_uri:
+            return severity_uri.split(":")[-1]
+        return severity_uri
+
+
+def _extract_document_ids(root: etree._Element) -> List[str]:
+    """Extract document unique IDs from registry response.
+    
+    Parses ExtrinsicObject elements to find document entries and extracts
+    their unique IDs using the XDSDocumentEntry.uniqueId identification scheme.
+    
+    Args:
+        root: Parsed lxml Element of SOAP response
+        
+    Returns:
+        List of document unique IDs
+    """
+    document_ids = []
+    
+    # Find all ExternalIdentifier elements with the document uniqueId scheme
+    xpath = (
+        f".//{{{RIM_NS}}}ExtrinsicObject"
+        f"/{{{RIM_NS}}}ExternalIdentifier"
+        f"[@identificationScheme='{DOCUMENT_UNIQUE_ID_SCHEME}']"
+    )
+    
+    external_ids = root.findall(xpath)
+    
+    for ext_id in external_ids:
+        value = ext_id.get("value")
+        if value:
+            document_ids.append(value)
+            logger.debug(f"Extracted document unique ID: {value}")
+    
+    if document_ids:
+        logger.info(f"Extracted {len(document_ids)} document unique ID(s)")
+    else:
+        logger.debug("No document unique IDs found in response")
+    
+    return document_ids
+
+
+def _extract_submission_set_id(root: etree._Element) -> Optional[str]:
+    """Extract submission set unique ID from registry response.
+    
+    Parses RegistryPackage elements to find the submission set and extracts
+    its unique ID using the XDSSubmissionSet.uniqueId identification scheme.
+    
+    Args:
+        root: Parsed lxml Element of SOAP response
+        
+    Returns:
+        Submission set unique ID or None if not found
+    """
+    # Find ExternalIdentifier with submission set uniqueId scheme
+    xpath = (
+        f".//{{{RIM_NS}}}RegistryPackage"
+        f"/{{{RIM_NS}}}ExternalIdentifier"
+        f"[@identificationScheme='{SUBMISSION_SET_UNIQUE_ID_SCHEME}']"
+    )
+    
+    ext_id = root.find(xpath)
+    
+    if ext_id is not None:
+        value = ext_id.get("value")
+        if value:
+            logger.info(f"Extracted submission set unique ID: {value}")
+            return value
+    
+    logger.debug("No submission set unique ID found in response")
+    return None
+
+
+def _extract_error_list(
+    registry_response: etree._Element,
+) -> tuple[List[RegistryErrorInfo], List[RegistryErrorInfo]]:
+    """Extract errors and warnings from RegistryErrorList.
+    
+    Parses the RegistryErrorList element and categorizes items by severity.
+    
+    Args:
+        registry_response: RegistryResponse element
+        
+    Returns:
+        Tuple of (errors, warnings) lists
+    """
+    errors: List[RegistryErrorInfo] = []
+    warnings: List[RegistryErrorInfo] = []
+    
+    error_list = registry_response.find(f".//{{{RS_NS}}}RegistryErrorList")
+    
+    if error_list is None:
+        logger.debug("No RegistryErrorList found in response")
+        return errors, warnings
+    
+    for error_elem in error_list.findall(f".//{{{RS_NS}}}RegistryError"):
+        error_code = error_elem.get("errorCode", "Unknown")
+        code_context = error_elem.get("codeContext", "No context provided")
+        severity_uri = error_elem.get("severity", ERROR_SEVERITY_ERROR)
+        location = error_elem.get("location")
+        
+        severity = _map_error_severity_to_string(severity_uri)
+        
+        error_info = RegistryErrorInfo(
+            error_code=error_code,
+            code_context=code_context,
+            severity=severity,
+            location=location,
+        )
+        
+        # Categorize by severity
+        if severity == "Warning":
+            warnings.append(error_info)
+            logger.warning(
+                f"Registry warning [{error_code}]: {code_context}"
+                + (f" (location: {location})" if location else "")
+            )
+        else:
+            errors.append(error_info)
+            logger.error(
+                f"Registry error [{error_code}]: {code_context}"
+                + (f" (location: {location})" if location else "")
+            )
+    
+    logger.info(f"Extracted {len(errors)} error(s) and {len(warnings)} warning(s)")
+    return errors, warnings
+
+
+def _extract_request_correlation(root: etree._Element) -> Optional[str]:
+    """Extract request ID from WS-Addressing RelatesTo header.
+    
+    Args:
+        root: Parsed lxml Element of SOAP response
+        
+    Returns:
+        Request ID from RelatesTo header or None if not found
+    """
+    relates_to = root.find(f".//{{{WSA_NS}}}RelatesTo")
+    
+    if relates_to is not None and relates_to.text:
+        request_id = relates_to.text
+        logger.debug(f"Extracted request correlation ID: {request_id}")
+        return request_id
+    
+    logger.debug("No WS-Addressing RelatesTo header found")
+    return None
+
+
+def _extract_response_id(root: etree._Element) -> Optional[str]:
+    """Extract response message ID from WS-Addressing MessageID header.
+    
+    Args:
+        root: Parsed lxml Element of SOAP response
+        
+    Returns:
+        Response message ID or None if not found
+    """
+    message_id = root.find(f".//{{{WSA_NS}}}MessageID")
+    
+    if message_id is not None and message_id.text:
+        response_id = message_id.text
+        logger.debug(f"Extracted response message ID: {response_id}")
+        return response_id
+    
+    logger.debug("No WS-Addressing MessageID header found")
+    return None
+
+
+def parse_registry_response(response_xml: str) -> RegistryResponse:
+    """Parse XDSb RegistryResponse from ITI-41 SOAP response.
+    
+    Parses the registry response from an ITI-41 (Provide and Register Document Set-b)
+    transaction, extracting status, document identifiers, submission set ID,
+    and any errors or warnings.
+    
+    Args:
+        response_xml: Complete SOAP response XML string
+        
+    Returns:
+        RegistryResponse with parsed status, IDs, and errors
         
     Raises:
-        NotImplementedError: Not yet implemented
+        ValueError: If XML is malformed or missing required elements
+        
+    Example:
+        >>> response = parse_registry_response(soap_response_xml)
+        >>> if response.is_success:
+        ...     logger.info(f"Submission successful: {response.submission_set_id}")
+        >>> else:
+        ...     for error in response.errors:
+        ...         logger.error(f"Error: {error.error_code} - {error.code_context}")
     """
-    raise NotImplementedError(
-        "Registry response parsing not yet implemented. "
-        "This will be added in Story 1.4 (ITI-41 implementation)."
+    logger.info("Parsing XDSb registry response")
+    
+    # Parse XML
+    try:
+        if isinstance(response_xml, bytes):
+            root = etree.fromstring(response_xml)
+        else:
+            root = etree.fromstring(response_xml.encode("utf-8"))
+    except etree.XMLSyntaxError as e:
+        raise ValueError(
+            f"Invalid registry response XML: {e}. "
+            "Check if response is valid SOAP envelope with XDSb RegistryResponse. "
+            "Verify the XDSb repository endpoint is responding correctly."
+        ) from e
+    
+    # Check for SOAP Fault first
+    soap_fault = root.find(f".//{{{SOAP_NS}}}Fault")
+    if soap_fault is not None:
+        # Extract fault details
+        fault_code_elem = soap_fault.find(f".//{{{SOAP_NS}}}Code/{{{SOAP_NS}}}Value")
+        fault_reason_elem = soap_fault.find(f".//{{{SOAP_NS}}}Reason/{{{SOAP_NS}}}Text")
+        
+        fault_code = fault_code_elem.text if fault_code_elem is not None else "Unknown"
+        fault_reason = fault_reason_elem.text if fault_reason_elem is not None else "Unknown error"
+        
+        logger.error(f"SOAP Fault received: {fault_code} - {fault_reason}")
+        
+        # Log the response for audit
+        log_registry_response(response_xml, "SOAP Fault")
+        
+        # Create error response
+        error_info = RegistryErrorInfo(
+            error_code=f"SOAP:{fault_code}",
+            code_context=fault_reason,
+            severity="Error",
+        )
+        
+        return RegistryResponse(
+            status="Failure",
+            is_success=False,
+            response_id=_extract_response_id(root),
+            errors=[error_info],
+            request_id=_extract_request_correlation(root),
+        )
+    
+    # Find RegistryResponse element
+    registry_response = root.find(f".//{{{RS_NS}}}RegistryResponse")
+    
+    if registry_response is None:
+        raise ValueError(
+            "No RegistryResponse element found in SOAP response. "
+            "Expected element: <rs:RegistryResponse> with namespace "
+            f"'{RS_NS}'. Verify the XDSb repository returned a valid response."
+        )
+    
+    # Extract status
+    status_uri = registry_response.get("status", "")
+    if not status_uri:
+        raise ValueError(
+            "RegistryResponse element missing 'status' attribute. "
+            "Expected attribute with value like "
+            "'urn:oasis:names:tc:ebxml-regrep:ResponseStatusType:Success'. "
+            "Check XDSb repository response format."
+        )
+    
+    status = _map_registry_status_to_string(status_uri)
+    is_success = status == "Success"
+    
+    # Log status at appropriate level
+    if is_success:
+        logger.info(f"Registry response status: {status}")
+    elif status == "PartialSuccess":
+        logger.warning(f"Registry response status: {status} (some items may have failed)")
+    else:
+        logger.error(f"Registry response status: {status}")
+    
+    # Extract response and request IDs for correlation
+    response_id = _extract_response_id(root)
+    request_id = _extract_request_correlation(root)
+    
+    # Extract document IDs and submission set ID
+    document_ids = _extract_document_ids(root)
+    submission_set_id = _extract_submission_set_id(root)
+    
+    # Extract errors and warnings
+    errors, warnings = _extract_error_list(registry_response)
+    
+    # Log complete response for audit (RULE 2)
+    log_registry_response(response_xml, status, submission_set_id)
+    
+    # Create response object
+    response = RegistryResponse(
+        status=status,
+        is_success=is_success,
+        response_id=response_id,
+        submission_set_id=submission_set_id,
+        document_ids=document_ids,
+        errors=errors,
+        warnings=warnings,
+        request_id=request_id,
     )
+    
+    logger.info(
+        f"Parsed registry response: status={status}, success={is_success}, "
+        f"document_count={len(document_ids)}, submission_set_id={submission_set_id}, "
+        f"error_count={len(errors)}, warning_count={len(warnings)}"
+    )
+    
+    return response

@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<soap12:Envelope xmlns:soap12="http://www.w3.org/2003/05/soap-envelope"
+                 xmlns:wsa="http://www.w3.org/2005/08/addressing"
+                 xmlns:rs="urn:oasis:names:tc:ebxml-regrep:xsd:rs:3.0"
+                 xmlns:rim="urn:oasis:names:tc:ebxml-regrep:xsd:rim:3.0">
+  <soap12:Header>
+    <wsa:Action>urn:ihe:iti:2007:ProvideAndRegisterDocumentSet-bResponse</wsa:Action>
+    <wsa:MessageID>urn:uuid:response-msg-partial-001</wsa:MessageID>
+    <wsa:RelatesTo>urn:uuid:request-msg-partial-001</wsa:RelatesTo>
+  </soap12:Header>
+  <soap12:Body>
+    <rs:RegistryResponse status="urn:oasis:names:tc:ebxml-regrep:ResponseStatusType:PartialSuccess">
+      <!-- Submission Set (successfully stored) -->
+      <rim:RegistryPackage id="urn:uuid:submission-set-partial">
+        <rim:ExternalIdentifier 
+          identificationScheme="urn:uuid:96fdda7c-d067-4183-912e-bf5ee74998a8"
+          value="1.2.3.4.5.6.7.8.9.3000"
+          registryObject="urn:uuid:submission-set-partial">
+          <rim:Name>
+            <rim:LocalizedString value="XDSSubmissionSet.uniqueId"/>
+          </rim:Name>
+        </rim:ExternalIdentifier>
+      </rim:RegistryPackage>
+      <!-- First Document (successfully stored) -->
+      <rim:ExtrinsicObject id="urn:uuid:document-partial-001" objectType="urn:uuid:7edca82f-054d-47f2-a032-9b2a5b5186c1">
+        <rim:ExternalIdentifier 
+          identificationScheme="urn:uuid:2e82c1f6-a085-4c72-9da3-8640a32e42ab"
+          value="1.2.3.4.5.6.7.8.9.3001"
+          registryObject="urn:uuid:document-partial-001">
+          <rim:Name>
+            <rim:LocalizedString value="XDSDocumentEntry.uniqueId"/>
+          </rim:Name>
+        </rim:ExternalIdentifier>
+      </rim:ExtrinsicObject>
+      <!-- Second Document (successfully stored) -->
+      <rim:ExtrinsicObject id="urn:uuid:document-partial-002" objectType="urn:uuid:7edca82f-054d-47f2-a032-9b2a5b5186c1">
+        <rim:ExternalIdentifier 
+          identificationScheme="urn:uuid:2e82c1f6-a085-4c72-9da3-8640a32e42ab"
+          value="1.2.3.4.5.6.7.8.9.3002"
+          registryObject="urn:uuid:document-partial-002">
+          <rim:Name>
+            <rim:LocalizedString value="XDSDocumentEntry.uniqueId"/>
+          </rim:Name>
+        </rim:ExternalIdentifier>
+      </rim:ExtrinsicObject>
+      <!-- Error list for failed items -->
+      <rs:RegistryErrorList highestSeverity="urn:oasis:names:tc:ebxml-regrep:ErrorSeverityType:Error">
+        <rs:RegistryError 
+          errorCode="XDSNonIdenticalHash"
+          codeContext="Document hash mismatch for document 'doc003'"
+          severity="urn:oasis:names:tc:ebxml-regrep:ErrorSeverityType:Error"
+          location="Document[@id='doc003']"/>
+        <rs:RegistryError 
+          errorCode="XDSRegistryMetadataError"
+          codeContext="Missing required attribute 'languageCode'"
+          severity="urn:oasis:names:tc:ebxml-regrep:ErrorSeverityType:Warning"
+          location="DocumentEntry/languageCode"/>
+      </rs:RegistryErrorList>
+    </rs:RegistryResponse>
+  </soap12:Body>
+</soap12:Envelope>

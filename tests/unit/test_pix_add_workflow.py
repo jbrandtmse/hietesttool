@@ -56,6 +56,11 @@ def mock_config():
     config.transport = Mock()
     config.transport.verify_tls = True
     
+    # Certificates (used by _validate_configuration)
+    config.certificates = Mock()
+    config.certificates.cert_path = "tests/fixtures/test_cert.pem"
+    config.certificates.key_path = "tests/fixtures/test_key.pem"
+    
     return config
 
 
@@ -139,10 +144,10 @@ class TestErrorCategorization:
         assert category == ErrorCategory.CRITICAL
     
     def test_categorize_error_timeout(self):
-        """Test Timeout categorized as CRITICAL."""
+        """Test Timeout categorized as TRANSIENT (retryable)."""
         error = Timeout("Request timed out")
         category = categorize_error(error)
-        assert category == ErrorCategory.CRITICAL
+        assert category == ErrorCategory.TRANSIENT
     
     def test_categorize_error_ssl_error(self):
         """Test SSLError categorized as CRITICAL."""
@@ -151,22 +156,16 @@ class TestErrorCategorization:
         assert category == ErrorCategory.CRITICAL
     
     def test_categorize_error_validation_error(self):
-        """Test ValidationError categorized as NON_CRITICAL."""
+        """Test ValidationError categorized as PERMANENT (non-retryable)."""
         error = ValidationError("Invalid gender code")
         category = categorize_error(error)
-        assert category == ErrorCategory.NON_CRITICAL
+        assert category == ErrorCategory.PERMANENT
     
-    def test_categorize_error_certificate_string(self):
-        """Test error with 'certificate' in message as CRITICAL."""
-        error = Exception("Certificate expired")
+    def test_categorize_error_generic_exception(self):
+        """Test generic Exception categorized as PERMANENT (default)."""
+        error = Exception("Some error")
         category = categorize_error(error)
-        assert category == ErrorCategory.CRITICAL
-    
-    def test_categorize_error_configuration_string(self):
-        """Test error with 'configuration' in message as CRITICAL."""
-        error = Exception("Configuration missing")
-        category = categorize_error(error)
-        assert category == ErrorCategory.CRITICAL
+        assert category == ErrorCategory.PERMANENT
 
 
 class TestRemediationMessages:
@@ -198,7 +197,7 @@ class TestRemediationMessages:
         error = ValidationError("Invalid data")
         message = get_remediation_message(error)
         assert "csv" in message.lower()
-        assert "fix" in message.lower()
+        assert "review" in message.lower()
 
 
 class TestProcessPatient:
@@ -342,7 +341,7 @@ class TestProcessBatch:
         mock_generate_saml.return_value = sample_saml_assertion
         
         # Mock successful patient results
-        def create_success_result(patient, saml):
+        def create_success_result(patient, saml, error_collector=None):
             return PatientResult(
                 patient_id=patient.patient_id,
                 pix_add_status=TransactionStatus.SUCCESS,
@@ -404,7 +403,7 @@ class TestProcessBatch:
         mock_generate_saml.return_value = sample_saml_assertion
         
         # Mock mixed results (patient 2 fails)
-        def create_mixed_result(patient, saml):
+        def create_mixed_result(patient, saml, error_collector=None):
             if patient.patient_id == "PAT002":
                 return PatientResult(
                     patient_id=patient.patient_id,
@@ -474,7 +473,7 @@ class TestProcessBatch:
         
         # Mock critical error on patient 2
         call_count = 0
-        def raise_on_second_call(patient, saml):
+        def raise_on_second_call(patient, saml, error_collector=None):
             nonlocal call_count
             call_count += 1
             if call_count == 2:

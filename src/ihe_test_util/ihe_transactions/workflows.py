@@ -33,6 +33,7 @@ from ihe_test_util.utils.exceptions import (
     ErrorCategory,
     categorize_error,
     create_error_info,
+    get_remediation_message,
 )
 from ihe_test_util.ihe_transactions.error_summary import (
     ErrorSummaryCollector,

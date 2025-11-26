@@ -418,6 +418,26 @@ def create_error_info(
     )
 
 
+def get_remediation_message(exception: Exception) -> str:
+    """Get actionable remediation message for an exception.
+    
+    Public wrapper around internal remediation generation.
+    
+    Args:
+        exception: Exception that occurred
+        
+    Returns:
+        Actionable remediation message with guidance for resolution
+        
+    Example:
+        >>> message = get_remediation_message(ConnectionError("Network unreachable"))
+        >>> print(message)
+        'Cannot reach endpoint. Check: 1) Network connectivity...'
+    """
+    category = categorize_error(exception)
+    return _generate_remediation(exception, category)
+
+
 def _generate_remediation(exception: Exception, category: ErrorCategory) -> str:
     """Generate actionable remediation message for an error.
     
