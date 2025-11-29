@@ -79,6 +79,84 @@ This path is relative to the directory where you run the `ihe-test-util` command
 
 ## Configuration Sections
 
+### Batch Processing
+
+Configuration for batch operations including checkpoints, connection pooling, and output organization.
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `batch_size` | integer | No | `100` | Maximum patients per batch (≥1) |
+| `checkpoint_interval` | integer | No | `50` | Save checkpoint every N patients (≥1) |
+| `checkpoint_file` | string | No | `null` | Path to checkpoint file for resume |
+| `resume_enabled` | boolean | No | `true` | Enable checkpoint/resume capability |
+| `fail_fast` | boolean | No | `false` | Stop processing on first error |
+| `concurrent_connections` | integer | No | `10` | Max concurrent HTTP connections (1-50) |
+| `output_dir` | string | No | `"output"` | Base output directory for batch results |
+
+**Validation:**
+- `batch_size` must be ≥ 1
+- `checkpoint_interval` must be ≥ 1
+- `concurrent_connections` must be between 1 and 50
+
+**Example:**
+```json
+{
+  "batch": {
+    "batch_size": 100,
+    "checkpoint_interval": 50,
+    "fail_fast": false,
+    "concurrent_connections": 10,
+    "output_dir": "output/batch-results",
+    "resume_enabled": true
+  }
+}
+```
+
+### Templates
+
+Configuration for CCD and SAML template paths.
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `ccd_template_path` | string | No | `null` | Path to CCD template file |
+| `saml_template_path` | string | No | `null` | Path to SAML template file |
+
+**Example:**
+```json
+{
+  "templates": {
+    "ccd_template_path": "templates/ccd-template.xml",
+    "saml_template_path": "templates/saml-template.xml"
+  }
+}
+```
+
+### Operation Logging
+
+Per-operation logging level configuration for fine-grained log control.
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `csv_log_level` | string | No | `"INFO"` | Log level for CSV operations |
+| `pix_add_log_level` | string | No | `"INFO"` | Log level for PIX Add transactions |
+| `iti41_log_level` | string | No | `"INFO"` | Log level for ITI-41 transactions |
+| `saml_log_level` | string | No | `"WARNING"` | Log level for SAML operations |
+
+**Validation:**
+- All log levels must be one of: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`
+
+**Example:**
+```json
+{
+  "operation_logging": {
+    "csv_log_level": "DEBUG",
+    "pix_add_log_level": "INFO",
+    "iti41_log_level": "INFO",
+    "saml_log_level": "WARNING"
+  }
+}
+```
+
 ### Endpoints
 
 IHE endpoint URLs for PIX Add and ITI-41 transactions.
@@ -206,6 +284,24 @@ All configuration values can be overridden using environment variables with the 
 | `IHE_TEST_LOG_LEVEL` | string | `logging.level` | `DEBUG` |
 | `IHE_TEST_LOG_FILE` | string | `logging.log_file` | `/var/log/app.log` |
 | `IHE_TEST_REDACT_PII` | boolean | `logging.redact_pii` | `true` or `false` |
+
+### Batch Processing Environment Variables
+
+| Variable | Type | Overrides | Example |
+|----------|------|-----------|---------|
+| `IHE_TEST_BATCH_SIZE` | integer | `batch.batch_size` | `100` |
+| `IHE_TEST_BATCH_CHECKPOINT_INTERVAL` | integer | `batch.checkpoint_interval` | `50` |
+| `IHE_TEST_BATCH_FAIL_FAST` | boolean | `batch.fail_fast` | `true` or `false` |
+| `IHE_TEST_BATCH_CONCURRENT_CONNECTIONS` | integer | `batch.concurrent_connections` | `10` |
+| `IHE_TEST_BATCH_OUTPUT_DIR` | string | `batch.output_dir` | `output/custom` |
+| `IHE_TEST_BATCH_RESUME_ENABLED` | boolean | `batch.resume_enabled` | `true` or `false` |
+
+### Template Environment Variables
+
+| Variable | Type | Overrides | Example |
+|----------|------|-----------|---------|
+| `IHE_TEST_TEMPLATE_CCD_PATH` | string | `templates.ccd_template_path` | `templates/ccd.xml` |
+| `IHE_TEST_TEMPLATE_SAML_PATH` | string | `templates.saml_template_path` | `templates/saml.xml` |
 
 ### Boolean Values
 

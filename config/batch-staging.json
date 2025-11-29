@@ -1,0 +1,44 @@
+{
+  "_comment": "Staging environment batch configuration - optimized for pre-production testing",
+  "_description": "Minimal logging, large batches, checkpoints every 100 patients for efficient staging runs",
+  
+  "endpoints": {
+    "pix_add_url": "https://staging-ihe.example.com/PIXManager",
+    "iti41_url": "https://staging-ihe.example.com/XDSRepository"
+  },
+  
+  "batch": {
+    "batch_size": 500,
+    "checkpoint_interval": 100,
+    "fail_fast": false,
+    "concurrent_connections": 20,
+    "output_dir": "output/staging",
+    "resume_enabled": true
+  },
+  
+  "templates": {
+    "ccd_template_path": "templates/ccd-template.xml",
+    "saml_template_path": "templates/saml-template.xml"
+  },
+  
+  "logging": {
+    "level": "WARNING",
+    "log_file": "logs/staging-batch.log",
+    "redact_pii": true
+  },
+  
+  "operation_logging": {
+    "csv_log_level": "WARNING",
+    "pix_add_log_level": "INFO",
+    "iti41_log_level": "INFO",
+    "saml_log_level": "WARNING"
+  },
+  
+  "transport": {
+    "verify_tls": true,
+    "timeout_connect": 30,
+    "timeout_read": 120,
+    "max_retries": 3,
+    "backoff_factor": 1.0
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "// TESTING CONFIGURATION": "Use for QA and integration testing",
+  "// DESCRIPTION": "Moderate logging, checkpoints every 50 patients, balanced settings",
+  
+  "batch": {
+    "batch_size": 100,
+    "checkpoint_interval": 50,
+    "fail_fast": false,
+    "concurrent_connections": 10,
+    "resume_enabled": true,
+    "output_dir": "output/test"
+  },
+  
+  "templates": {
+    "ccd_template_path": "templates/ccd-template.xml",
+    "saml_template_path": "templates/saml-template.xml"
+  },
+  
+  "operation_logging": {
+    "csv_log_level": "INFO",
+    "pix_add_log_level": "INFO",
+    "iti41_log_level": "INFO",
+    "saml_log_level": "WARNING"
+  },
+  
+  "endpoints": {
+    "pix_add_url": "http://localhost:5001/pix/add",
+    "iti41_url": "http://localhost:5001/iti41",
+    "timeout": 60,
+    "verify_tls": false
+  },
+  
+  "logging": {
+    "level": "INFO",
+    "redact_pii": true
+  }
+}

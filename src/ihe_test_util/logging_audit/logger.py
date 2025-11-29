@@ -15,6 +15,12 @@ from typing import Optional
 
 from .formatters import PIIRedactingFormatter
 
+# Type hint for Config import (avoid circular import)
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ..config.schema import Config, OperationLoggingConfig
+
 # Constants
 DEFAULT_LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 DEFAULT_LOG_FILE = Path("logs") / "ihe-test-util.log"
@@ -23,6 +29,17 @@ BACKUP_COUNT = 5
 
 # Track if logging has been configured
 _logging_configured = False
+
+# Operation-specific logger names
+OPERATION_LOGGERS = {
+    "csv": "ihe_test_util.csv",
+    "pix_add": "ihe_test_util.pix_add",
+    "iti41": "ihe_test_util.iti41",
+    "saml": "ihe_test_util.saml",
+}
+
+# Module-level logger for this module
+logger = logging.getLogger(__name__)
 
 
 def configure_logging(
@@ -146,3 +163,139 @@ def get_logger(module_name: str) -> logging.Logger:
         >>> logger.error("An error occurred")
     """
     return logging.getLogger(module_name)
+
+
+def get_operation_logger(operation: str) -> logging.Logger:
+    """Get a logger for a specific operation type.
+    
+    Operation loggers enable per-operation log level configuration.
+    Supported operations: csv, pix_add, iti41, saml.
+    
+    Args:
+        operation: Operation type (csv, pix_add, iti41, saml)
+        
+    Returns:
+        Logger instance for the operation
+        
+    Raises:
+        ValueError: If operation is not a recognized type
+        
+    Example:
+        >>> logger = get_operation_logger("pix_add")
+        >>> logger.info("PIX Add transaction started")
+    """
+    if operation not in OPERATION_LOGGERS:
+        raise ValueError(
+            f"Unknown operation: {operation}. "
+            f"Must be one of: {', '.join(OPERATION_LOGGERS.keys())}"
+        )
+    return logging.getLogger(OPERATION_LOGGERS[operation])
+
+
+def configure_operation_logging(
+    csv_log_level: str = "INFO",
+    pix_add_log_level: str = "INFO",
+    iti41_log_level: str = "INFO",
+    saml_log_level: str = "WARNING",
+) -> None:
+    """Configure logging levels for each operation type.
+    
+    Allows different verbosity for different operations, useful for
+    debugging specific transaction types without excessive logging.
+    
+    Args:
+        csv_log_level: Log level for CSV processing operations
+        pix_add_log_level: Log level for PIX Add transactions
+        iti41_log_level: Log level for ITI-41 transactions
+        saml_log_level: Log level for SAML operations
+        
+    Raises:
+        ValueError: If any log level is invalid
+        
+    Example:
+        >>> configure_operation_logging(
+        ...     csv_log_level="DEBUG",
+        ...     pix_add_log_level="INFO",
+        ...     iti41_log_level="INFO",
+        ...     saml_log_level="WARNING"
+        ... )
+    """
+    levels = {
+        "csv": csv_log_level,
+        "pix_add": pix_add_log_level,
+        "iti41": iti41_log_level,
+        "saml": saml_log_level,
+    }
+    
+    for operation, level in levels.items():
+        numeric_level = getattr(logging, level.upper(), None)
+        if not isinstance(numeric_level, int):
+            raise ValueError(
+                f"Invalid log level for {operation}: {level}. "
+                f"Must be one of: DEBUG, INFO, WARNING, ERROR, CRITICAL"
+            )
+        
+        logger_name = OPERATION_LOGGERS[operation]
+        operation_logger = logging.getLogger(logger_name)
+        operation_logger.setLevel(numeric_level)
+        logger.debug(
+            "Set %s logger level to %s", logger_name, level.upper()
+        )
+
+
+def configure_operation_logging_from_config(config: "OperationLoggingConfig") -> None:
+    """Configure operation logging from OperationLoggingConfig object.
+    
+    Convenience function that accepts an OperationLoggingConfig object
+    instead of individual parameters.
+    
+    Args:
+        config: OperationLoggingConfig with log levels for each operation
+        
+    Example:
+        >>> from ihe_test_util.config.schema import OperationLoggingConfig
+        >>> config = OperationLoggingConfig(csv_log_level="DEBUG")
+        >>> configure_operation_logging_from_config(config)
+    """
+    configure_operation_logging(
+        csv_log_level=config.csv_log_level,
+        pix_add_log_level=config.pix_add_log_level,
+        iti41_log_level=config.iti41_log_level,
+        saml_log_level=config.saml_log_level,
+    )
+
+
+def set_operation_log_level(operation: str, level: str) -> None:
+    """Set log level for a specific operation at runtime.
+    
+    Enables dynamic log level changes without reconfiguring all operations.
+    
+    Args:
+        operation: Operation type (csv, pix_add, iti41, saml)
+        level: Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+        
+    Raises:
+        ValueError: If operation or level is invalid
+        
+    Example:
+        >>> set_operation_log_level("pix_add", "DEBUG")
+        >>> # Later, reduce verbosity
+        >>> set_operation_log_level("pix_add", "WARNING")
+    """
+    if operation not in OPERATION_LOGGERS:
+        raise ValueError(
+            f"Unknown operation: {operation}. "
+            f"Must be one of: {', '.join(OPERATION_LOGGERS.keys())}"
+        )
+    
+    numeric_level = getattr(logging, level.upper(), None)
+    if not isinstance(numeric_level, int):
+        raise ValueError(
+            f"Invalid log level: {level}. "
+            f"Must be one of: DEBUG, INFO, WARNING, ERROR, CRITICAL"
+        )
+    
+    logger_name = OPERATION_LOGGERS[operation]
+    operation_logger = logging.getLogger(logger_name)
+    operation_logger.setLevel(numeric_level)
+    logger.debug("Set %s logger level to %s", logger_name, level.upper())

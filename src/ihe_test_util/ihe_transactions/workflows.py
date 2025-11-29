@@ -22,7 +22,12 @@ from ihe_test_util.config.schema import Config
 from ihe_test_util.csv_parser.parser import parse_csv
 from ihe_test_util.ihe_transactions.pix_add import build_pix_add_message
 from ihe_test_util.ihe_transactions.soap_client import PIXAddSOAPClient
-from ihe_test_util.models.batch import BatchProcessingResult, PatientResult
+from ihe_test_util.models.batch import (
+    BatchCheckpoint,
+    BatchProcessingResult,
+    BatchStatistics,
+    PatientResult,
+)
 from ihe_test_util.models.patient import PatientDemographics
 from ihe_test_util.models.responses import TransactionStatus
 from ihe_test_util.models.saml import SAMLAssertion
@@ -677,12 +682,14 @@ def generate_summary_report(results: BatchProcessingResult) -> str:
 # Integrated Workflow (Story 6.5)
 # =============================================================================
 
+from ihe_test_util.config.schema import BatchConfig
 from ihe_test_util.ihe_transactions.iti41_client import ITI41SOAPClient
 from ihe_test_util.ihe_transactions.xdsb_metadata import XDSbMetadataBuilder
-from ihe_test_util.models.batch import BatchWorkflowResult, PatientWorkflowResult
+from ihe_test_util.models.batch import BatchWorkflowResult, PatientWorkflowResult, BatchCheckpoint, BatchStatistics
 from ihe_test_util.models.ccd import CCDDocument
 from ihe_test_util.models.transactions import ITI41Transaction
 from ihe_test_util.template_engine.personalizer import TemplatePersonalizer, MissingValueStrategy
+from ihe_test_util.transport.http_client import ConnectionPool, ConnectionPoolConfig
 from ihe_test_util.utils.exceptions import (
     ITI41TransportError,
     ITI41TimeoutError,
@@ -706,11 +713,19 @@ class IntegratedWorkflow:
     6. Execute ITI-41 document submission
     7. Track per-patient status at each step
     
+    Supports batch configuration for:
+    - Checkpoint/resume capability for large batches
+    - Connection pooling for efficient HTTP connections
+    - Fail-fast mode to stop on first error
+    - Statistics calculation for throughput/latency tracking
+    
     Attributes:
         config: Application configuration with endpoints and OIDs
         ccd_template_path: Path to CCD XML template
+        batch_config: Optional batch processing configuration
         pix_add_workflow: PIX Add workflow instance for patient registration
         iti41_client: ITI-41 SOAP client for document submission
+        connection_pool: HTTP connection pool for efficient requests
         
     Example:
         >>> from ihe_test_util.config.manager import ConfigManager
@@ -718,15 +733,27 @@ class IntegratedWorkflow:
         >>> workflow = IntegratedWorkflow(config, Path("templates/ccd.xml"))
         >>> results = workflow.process_batch(Path("patients.csv"))
         >>> print(f"Success rate: {results.get_overall_success_rate():.1f}%")
+        
+        # With batch configuration
+        >>> batch_config = BatchConfig(checkpoint_interval=50, fail_fast=True)
+        >>> workflow = IntegratedWorkflow(config, Path("templates/ccd.xml"), batch_config)
+        >>> results = workflow.process_batch(Path("patients.csv"))
     """
     
-    def __init__(self, config: Config, ccd_template_path: Path) -> None:
+    def __init__(
+        self,
+        config: Config,
+        ccd_template_path: Path,
+        batch_config: Optional[BatchConfig] = None
+    ) -> None:
         """Initialize integrated workflow orchestrator.
         
         Args:
             config: Application configuration with PIX Add and ITI-41 endpoints,
                    certificates, and OID configuration
             ccd_template_path: Path to CCD XML template for personalization
+            batch_config: Optional batch processing configuration with checkpoint
+                         interval, fail-fast mode, and connection pool settings
             
         Raises:
             ValidationError: If configuration is invalid or missing required fields
@@ -736,6 +763,20 @@ class IntegratedWorkflow:
         
         self._config = config
         self._ccd_template_path = ccd_template_path
+        self._batch_config = batch_config or BatchConfig()
+        
+        # Initialize connection pool for HTTP sessions
+        pool_config = ConnectionPoolConfig(
+            max_connections=self._batch_config.concurrent_connections,
+            pool_block=True,
+        )
+        self._connection_pool = ConnectionPool(pool_config)
+        
+        logger.debug(
+            f"Batch config: checkpoint_interval={self._batch_config.checkpoint_interval}, "
+            f"fail_fast={self._batch_config.fail_fast}, "
+            f"concurrent_connections={self._batch_config.concurrent_connections}"
+        )
         
         # Validate CCD template exists
         if not ccd_template_path.exists():
@@ -781,15 +822,29 @@ class IntegratedWorkflow:
         """Get CCD template path."""
         return self._ccd_template_path
     
-    def process_batch(self, csv_path: Path) -> BatchWorkflowResult:
+    @property
+    def batch_config(self) -> BatchConfig:
+        """Get batch configuration."""
+        return self._batch_config
+    
+    def process_batch(
+        self,
+        csv_path: Path,
+        checkpoint_file: Optional[Path] = None
+    ) -> BatchWorkflowResult:
         """Process all patients from CSV file through complete workflow.
         
         Orchestrates: CSV → CCD generation → PIX Add → ITI-41 submission
         for all patients in the CSV file. Processes patients sequentially
         to maintain registration order.
         
+        Supports checkpoint/resume for large batches. If checkpoint_file is
+        provided and exists, processing resumes from the last checkpoint.
+        
         Args:
             csv_path: Path to CSV file with patient demographics
+            checkpoint_file: Optional path to checkpoint file. If provided,
+                           checkpoints are saved at configured intervals.
             
         Returns:
             BatchWorkflowResult with per-patient results and statistics
@@ -851,10 +906,34 @@ class IntegratedWorkflow:
             error_collector = ErrorSummaryCollector()
             error_collector.set_patient_count(total_patients)
             
+            # Step 4.5: Check for existing checkpoint to resume from
+            start_index = 0
+            existing_checkpoint: Optional[BatchCheckpoint] = None
+            
+            if checkpoint_file and self._batch_config.resume_enabled:
+                existing_checkpoint = _load_checkpoint(checkpoint_file)
+                if existing_checkpoint and existing_checkpoint.csv_file_path == str(csv_path):
+                    start_index = existing_checkpoint.last_processed_index + 1
+                    logger.info(
+                        f"Resuming from checkpoint: starting at patient {start_index + 1}/{total_patients}"
+                    )
+            
             # Step 5: Process patients sequentially (AC: 4)
-            logger.info(f"Processing {total_patients} patients sequentially")
+            logger.info(f"Processing {total_patients} patients sequentially (starting at {start_index + 1})")
+            
+            # Track completed/failed IDs for checkpoint
+            completed_patient_ids: list[str] = []
+            failed_patient_ids: list[str] = []
+            
+            # Restore from checkpoint if available
+            if existing_checkpoint:
+                completed_patient_ids = list(existing_checkpoint.completed_patient_ids)
+                failed_patient_ids = list(existing_checkpoint.failed_patient_ids)
             
             for idx, row in df.iterrows():
+                # Skip already processed patients when resuming
+                if idx < start_index:
+                    continue
                 patient_num = idx + 1
                 logger.info(f"Processing patient {patient_num}/{total_patients}")
                 
@@ -871,6 +950,33 @@ class IntegratedWorkflow:
                     
                     # Aggregate results - counts are computed properties from patient_results
                     batch_result.patient_results.append(patient_result)
+                    
+                    # Track for checkpoint
+                    if patient_result.is_fully_successful:
+                        completed_patient_ids.append(patient.patient_id)
+                    else:
+                        failed_patient_ids.append(patient.patient_id)
+                    
+                    # Save checkpoint at configured intervals
+                    if checkpoint_file and (idx + 1) % self._batch_config.checkpoint_interval == 0:
+                        checkpoint = BatchCheckpoint(
+                            batch_id=batch_id,
+                            csv_file_path=str(csv_path),
+                            last_processed_index=idx,
+                            timestamp=datetime.now(timezone.utc),
+                            completed_patient_ids=completed_patient_ids,
+                            failed_patient_ids=failed_patient_ids,
+                            total_patients=total_patients
+                        )
+                        _save_checkpoint(checkpoint, checkpoint_file)
+                    
+                    # Check fail-fast mode
+                    if self._batch_config.fail_fast and not patient_result.is_fully_successful:
+                        logger.warning(
+                            f"Fail-fast mode: Stopping after failure for patient {patient.patient_id}"
+                        )
+                        batch_result.end_timestamp = datetime.now(timezone.utc)
+                        break
                     
                 except (ConnectionError, Timeout, SSLError) as critical_error:
                     # CRITICAL error - halt workflow, return partial results
@@ -911,6 +1017,13 @@ class IntegratedWorkflow:
                        f"ITI-41: {batch_result.iti41_success_count}/{total_patients}"
             )
             
+            # Calculate and attach statistics
+            total_time_ms = int(batch_result.duration_seconds * 1000) if batch_result.duration_seconds else 0
+            batch_result.statistics = BatchStatistics.calculate_from_results(
+                batch_result.patient_results,
+                total_time_ms
+            )
+            
             logger.info(
                 f"Integrated workflow complete: batch_id={batch_id}, "
                 f"total={total_patients}, "
@@ -919,6 +1032,14 @@ class IntegratedWorkflow:
                 f"complete_success={batch_result.fully_successful_count}, "
                 f"duration={batch_result.duration_seconds:.2f}s"
             )
+            
+            # Log statistics if available
+            if batch_result.statistics:
+                logger.info(
+                    f"Statistics: throughput={batch_result.statistics.throughput_patients_per_minute:.1f}/min, "
+                    f"avg_latency={batch_result.statistics.avg_latency_ms:.1f}ms, "
+                    f"error_rate={batch_result.statistics.error_rate:.1f}%"
+                )
             
             return batch_result
             
@@ -1440,6 +1561,77 @@ def save_workflow_results_to_json(
         json.dump(output_data, f, indent=2)
     
     logger.info(f"Saved workflow results to {output_path}")
+
+
+def _save_checkpoint(checkpoint: BatchCheckpoint, path: Path) -> None:
+    """Save batch processing checkpoint to file.
+    
+    Saves checkpoint state to JSON file for resumable batch processing.
+    Creates parent directories if needed.
+    
+    Args:
+        checkpoint: BatchCheckpoint instance to save
+        path: Path to checkpoint file
+        
+    Raises:
+        IOError: If file cannot be written
+        
+    Example:
+        >>> checkpoint = BatchCheckpoint(...)
+        >>> _save_checkpoint(checkpoint, Path("output/checkpoint.json"))
+    """
+    logger.info(f"Saving checkpoint to {path} (processed {checkpoint.last_processed_index}/{checkpoint.total_patients})")
+    
+    # Create parent directories if needed
+    path.parent.mkdir(parents=True, exist_ok=True)
+    
+    # Write checkpoint JSON
+    with path.open("w", encoding="utf-8") as f:
+        f.write(checkpoint.to_json())
+    
+    logger.debug(f"Checkpoint saved: {checkpoint.progress_percentage:.1f}% complete")
+
+
+def _load_checkpoint(path: Path) -> Optional[BatchCheckpoint]:
+    """Load batch processing checkpoint from file.
+    
+    Loads checkpoint state from JSON file for resumable batch processing.
+    Returns None if file doesn't exist.
+    
+    Args:
+        path: Path to checkpoint file
+        
+    Returns:
+        BatchCheckpoint instance, or None if file doesn't exist
+        
+    Raises:
+        json.JSONDecodeError: If JSON is invalid
+        KeyError: If required fields are missing
+        IOError: If file cannot be read
+        
+    Example:
+        >>> checkpoint = _load_checkpoint(Path("output/checkpoint.json"))
+        >>> if checkpoint:
+        ...     print(f"Resuming from patient {checkpoint.last_processed_index}")
+    """
+    if not path.exists():
+        logger.debug(f"No checkpoint file found at {path}")
+        return None
+    
+    logger.info(f"Loading checkpoint from {path}")
+    
+    with path.open("r", encoding="utf-8") as f:
+        json_str = f.read()
+    
+    checkpoint = BatchCheckpoint.from_json(json_str)
+    
+    logger.info(
+        f"Checkpoint loaded: batch_id={checkpoint.batch_id}, "
+        f"last_processed={checkpoint.last_processed_index}/{checkpoint.total_patients}, "
+        f"progress={checkpoint.progress_percentage:.1f}%"
+    )
+    
+    return checkpoint
 
 
 def generate_integrated_workflow_summary(results: BatchWorkflowResult) -> str:

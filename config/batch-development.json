@@ -1,0 +1,37 @@
+{
+  "// DEVELOPMENT CONFIGURATION": "Use for local development and debugging",
+  "// DESCRIPTION": "Verbose logging, fail-fast mode, small batches for quick iteration",
+  
+  "batch": {
+    "batch_size": 10,
+    "checkpoint_interval": 5,
+    "fail_fast": true,
+    "concurrent_connections": 5,
+    "resume_enabled": true,
+    "output_dir": "output/dev"
+  },
+  
+  "templates": {
+    "ccd_template_path": "templates/ccd-template.xml",
+    "saml_template_path": "templates/saml-template.xml"
+  },
+  
+  "operation_logging": {
+    "csv_log_level": "DEBUG",
+    "pix_add_log_level": "DEBUG",
+    "iti41_log_level": "DEBUG",
+    "saml_log_level": "DEBUG"
+  },
+  
+  "endpoints": {
+    "pix_add_url": "http://localhost:5001/pix/add",
+    "iti41_url": "http://localhost:5001/iti41",
+    "timeout": 30,
+    "verify_tls": false
+  },
+  
+  "logging": {
+    "level": "DEBUG",
+    "redact_pii": false
+  }
+}

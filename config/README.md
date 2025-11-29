@@ -132,9 +132,128 @@ If you see validation errors:
 - Check that certificate format is one of: pem, pkcs12, der
 - Check that numeric values are valid integers or floats
 
+## Batch Configuration Templates
+
+Pre-configured templates are available for different environments. These templates include batch processing settings, logging levels, and connection configurations optimized for each use case.
+
+### Available Templates
+
+| Template | File | Use Case |
+|----------|------|----------|
+| Development | `batch-development.json` | Local development with verbose logging |
+| Testing | `batch-testing.json` | CI/CD testing with moderate logging |
+| Staging | `batch-staging.json` | Pre-production with minimal logging |
+
+### Template Settings Summary
+
+| Setting | Development | Testing | Staging |
+|---------|-------------|---------|---------|
+| `batch_size` | 10 | 100 | 500 |
+| `checkpoint_interval` | 5 | 50 | 100 |
+| `fail_fast` | true | false | false |
+| `concurrent_connections` | 5 | 10 | 20 |
+| `log_level` | DEBUG | INFO | WARNING |
+
+### Using Batch Templates
+
+1. **Copy the appropriate template:**
+   ```bash
+   cp config/batch-development.json config/config.json
+   ```
+
+2. **Customize endpoint URLs** to point to your target environment:
+   ```json
+   {
+     "endpoints": {
+       "pix_add_url": "http://your-server/PIXManager",
+       "iti41_url": "http://your-server/XDSRepository"
+     }
+   }
+   ```
+
+3. **Run batch processing:**
+   ```bash
+   ihe-test-util --config config/config.json submit batch patients.csv
+   ```
+
+### Batch Configuration Options
+
+#### Batch Section
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `batch_size` | int | 100 | Maximum patients per batch |
+| `checkpoint_interval` | int | 50 | Save checkpoint every N patients |
+| `fail_fast` | bool | false | Stop on first error |
+| `concurrent_connections` | int | 10 | Max concurrent HTTP connections |
+| `output_dir` | string | "output" | Base output directory |
+| `resume_enabled` | bool | true | Enable checkpoint/resume capability |
+
+#### Operation Logging Section
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `csv_log_level` | string | "INFO" | Log level for CSV operations |
+| `pix_add_log_level` | string | "INFO" | Log level for PIX Add transactions |
+| `iti41_log_level` | string | "INFO" | Log level for ITI-41 transactions |
+| `saml_log_level` | string | "WARNING" | Log level for SAML operations |
+
+#### Templates Section
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `ccd_template_path` | string | null | Path to CCD template file |
+| `saml_template_path` | string | null | Path to SAML template file |
+
+### Environment Variable Overrides for Batch Settings
+
+Batch configuration values can be overridden using environment variables:
+
+- `IHE_TEST_BATCH_SIZE` - Override batch size
+- `IHE_TEST_BATCH_CHECKPOINT_INTERVAL` - Override checkpoint interval
+- `IHE_TEST_BATCH_FAIL_FAST` - Override fail-fast setting (true/false)
+- `IHE_TEST_BATCH_CONCURRENT_CONNECTIONS` - Override connection limit
+- `IHE_TEST_BATCH_OUTPUT_DIR` - Override output directory
+- `IHE_TEST_BATCH_RESUME_ENABLED` - Override resume capability (true/false)
+
+### Checkpoint and Resume
+
+The batch processing system supports checkpoint/resume for large batches:
+
+1. **Checkpoints are saved automatically** at the configured interval
+2. **To resume a failed batch:**
+   ```bash
+   ihe-test-util submit batch --resume output/results/checkpoint-{batch_id}.json patients.csv
+   ```
+3. **Checkpoint files contain:**
+   - Last processed patient index
+   - Completed patient IDs
+   - Failed patient IDs
+   - Timestamp
+
+### Output Directory Structure
+
+When batch processing runs, it creates an organized directory structure:
+
+```
+output/
+├── logs/
+│   └── batch-{batch_id}.log      # Main batch processing log
+├── documents/
+│   └── ccds/
+│       └── patient-{id}-ccd.xml  # Generated CCD documents
+├── results/
+│   ├── batch-{batch_id}-results.json  # Complete results
+│   ├── batch-{batch_id}-summary.txt   # Human-readable summary
+│   └── checkpoint-{batch_id}.json     # Checkpoint file
+└── audit/
+    └── audit-{batch_id}.log      # Audit trail
+```
+
 ## Further Documentation
 
 For detailed configuration documentation, see:
 - [Configuration Guide](../docs/configuration-guide.md) - Complete configuration reference
+- [Batch Processing Tutorial](../examples/tutorials/06-batch-processing.md) - Step-by-step batch processing guide
 - [Example Configuration](../examples/config.example.json) - Commented example file
 - [Environment Variables](../.env.example) - Environment variable reference

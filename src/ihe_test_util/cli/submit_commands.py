@@ -17,7 +17,7 @@ from requests import ConnectionError, Timeout
 from requests.exceptions import SSLError
 
 from ihe_test_util.config.manager import load_config
-from ihe_test_util.config.schema import Config
+from ihe_test_util.config.schema import BatchConfig, Config
 from ihe_test_util.csv_parser.parser import parse_csv
 from ihe_test_util.ihe_transactions.workflows import (
     IntegratedWorkflow,
@@ -27,6 +27,7 @@ from ihe_test_util.ihe_transactions.workflows import (
 from ihe_test_util.models.batch import BatchWorkflowResult, PatientWorkflowResult
 from ihe_test_util.saml.certificate_manager import load_certificate
 from ihe_test_util.utils.exceptions import ConfigurationError, ValidationError
+from ihe_test_util.utils.output_manager import OutputManager, setup_output_directories
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +65,29 @@ def submit() -> None:
     help="Output JSON file path for workflow results",
 )
 @click.option(
+    "--output-dir",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Output directory for organized results (logs/, results/, documents/, audit/)",
+)
+@click.option(
+    "--checkpoint-interval",
+    type=int,
+    default=None,
+    help="Save checkpoint every N patients (enables resume capability)",
+)
+@click.option(
+    "--resume",
+    type=click.Path(exists=True, path_type=Path),
+    default=None,
+    help="Resume from checkpoint file",
+)
+@click.option(
+    "--fail-fast",
+    is_flag=True,
+    help="Stop processing on first patient failure",
+)
+@click.option(
     "--dry-run",
     is_flag=True,
     help="Validate configuration and CSV without submitting",
@@ -80,6 +104,10 @@ def batch(
     config: Optional[Path],
     ccd_template: Optional[Path],
     output: Optional[Path],
+    output_dir: Optional[Path],
+    checkpoint_interval: Optional[int],
+    resume: Optional[Path],
+    fail_fast: bool,
     dry_run: bool,
     http: bool,
 ) -> None:
@@ -143,6 +171,37 @@ def batch(
             _execute_dry_run(csv_file, config_obj, ccd_template)
             sys.exit(0)
         
+        # Build batch configuration from CLI options
+        batch_config = _build_batch_config(
+            checkpoint_interval=checkpoint_interval,
+            fail_fast=fail_fast,
+            output_dir=output_dir,
+        )
+        
+        # Set up output directories if output_dir specified
+        output_manager: Optional[OutputManager] = None
+        if output_dir:
+            output_manager = OutputManager(output_dir)
+            output_paths = output_manager.setup_directories()
+            logger.info(f"Output directories created at: {output_dir}")
+        
+        # Determine checkpoint file path
+        checkpoint_file: Optional[Path] = None
+        if checkpoint_interval or resume:
+            if output_manager:
+                checkpoint_file = output_manager.get_checkpoint_path(
+                    f"batch-{datetime.now(timezone.utc).strftime('%Y%m%d')}"
+                )
+            elif output:
+                checkpoint_file = output.parent / f"checkpoint-{output.stem}.json"
+            else:
+                checkpoint_file = Path("output") / "checkpoint.json"
+        
+        # If resuming, use the specified checkpoint file
+        if resume:
+            checkpoint_file = resume
+            click.echo(click.style(f"Resuming from checkpoint: {resume}", fg="yellow"))
+        
         # Display header
         click.echo()
         click.echo(click.style("=" * 80, fg="cyan"))
@@ -164,17 +223,28 @@ def batch(
         # Determine CCD template path
         template_path = ccd_template or _get_default_ccd_template()
         click.echo(f"CCD Template:       {template_path}")
+        
+        # Display batch configuration
+        if batch_config.checkpoint_interval != 50 or batch_config.fail_fast:
+            click.echo()
+            click.echo("Batch Configuration:")
+            if checkpoint_interval:
+                click.echo(f"  Checkpoint Interval: Every {checkpoint_interval} patients")
+            if batch_config.fail_fast:
+                click.echo(f"  Fail-Fast Mode:      {click.style('ENABLED', fg='yellow')}")
+            if output_dir:
+                click.echo(f"  Output Directory:    {output_dir}")
         click.echo()
         
-        # Initialize workflow
+        # Initialize workflow with batch config
         logger.info("Initializing integrated workflow")
-        workflow = IntegratedWorkflow(config_obj, str(template_path))
+        workflow = IntegratedWorkflow(config_obj, template_path, batch_config)
         
         # Process batch with real-time progress display
         click.echo(click.style("Processing patients...", fg="cyan"))
         click.echo()
         
-        result = workflow.process_batch(csv_file)
+        result = workflow.process_batch(csv_file, checkpoint_file=checkpoint_file)
         
         # Display per-patient results with color coding
         _display_patient_results(result)
@@ -186,10 +256,30 @@ def batch(
         
         # Save JSON output if requested
         if output:
-            save_workflow_results_to_json(result, str(output))
+            save_workflow_results_to_json(result, output)
             click.echo()
             click.echo(
                 click.style("✓ Results saved to: ", fg="green") + str(output)
+            )
+        
+        # Save to organized output directory if specified
+        if output_manager and result:
+            # Save results JSON
+            results_path = output_manager.write_result_file(
+                result.to_dict(),
+                f"batch-{result.batch_id}-results.json"
+            )
+            click.echo(
+                click.style("✓ Results saved to: ", fg="green") + str(results_path)
+            )
+            
+            # Save summary text
+            summary_path = output_manager.write_summary_file(
+                summary,
+                result.batch_id
+            )
+            click.echo(
+                click.style("✓ Summary saved to: ", fg="green") + str(summary_path)
             )
         
         # Determine exit code based on results
@@ -491,6 +581,35 @@ def _execute_dry_run(csv_file: Path, config_obj: Config, ccd_template: Optional[
         click.echo(click.style(f"✗ Validation failed: {e}", fg="red"))
         logger.error(f"Dry-run validation failed: {e}")
         sys.exit(1)
+
+
+def _build_batch_config(
+    checkpoint_interval: Optional[int],
+    fail_fast: bool,
+    output_dir: Optional[Path],
+) -> BatchConfig:
+    """Build BatchConfig from CLI options.
+    
+    Args:
+        checkpoint_interval: Checkpoint interval from CLI
+        fail_fast: Fail-fast flag from CLI
+        output_dir: Output directory from CLI
+        
+    Returns:
+        BatchConfig instance with CLI options applied
+    """
+    config_kwargs = {}
+    
+    if checkpoint_interval is not None:
+        config_kwargs["checkpoint_interval"] = checkpoint_interval
+    
+    if fail_fast:
+        config_kwargs["fail_fast"] = True
+    
+    if output_dir:
+        config_kwargs["output_dir"] = output_dir
+    
+    return BatchConfig(**config_kwargs)
 
 
 def _display_patient_results(result: BatchWorkflowResult) -> None:
