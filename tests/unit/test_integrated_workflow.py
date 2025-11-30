@@ -409,17 +409,21 @@ class TestIntegratedWorkflowProcessBatch:
     
     @patch('ihe_test_util.ihe_transactions.workflows.parse_csv')
     @patch('ihe_test_util.ihe_transactions.workflows.IntegratedWorkflow.process_patient')
+    @patch('ihe_test_util.ihe_transactions.workflows.IntegratedWorkflow._generate_saml_assertion')
     @patch('pathlib.Path.exists')
     def test_process_batch_maintains_order(
         self,
         mock_exists,
+        mock_generate_saml,
         mock_process_patient,
         mock_parse_csv,
         mock_config,
+        sample_saml_assertion,
         tmp_path
     ):
         """Test batch processing maintains patient order (AC: 4)."""
         mock_exists.return_value = True
+        mock_generate_saml.return_value = sample_saml_assertion
         
         # Create test CSV data with 3 patients
         df = pd.DataFrame({
@@ -456,17 +460,21 @@ class TestIntegratedWorkflowProcessBatch:
     
     @patch('ihe_test_util.ihe_transactions.workflows.parse_csv')
     @patch('ihe_test_util.ihe_transactions.workflows.IntegratedWorkflow.process_patient')
+    @patch('ihe_test_util.ihe_transactions.workflows.IntegratedWorkflow._generate_saml_assertion')
     @patch('pathlib.Path.exists')
     def test_process_batch_continues_after_patient_failure(
         self,
         mock_exists,
+        mock_generate_saml,
         mock_process_patient,
         mock_parse_csv,
         mock_config,
+        sample_saml_assertion,
         tmp_path
     ):
         """Test batch continues processing after non-critical patient failure (AC: 6)."""
         mock_exists.return_value = True
+        mock_generate_saml.return_value = sample_saml_assertion
         
         # Create test CSV data
         df = pd.DataFrame({

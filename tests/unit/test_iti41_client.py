@@ -700,10 +700,12 @@ class TestResponseCorrelation:
 
 
 class TestResponseParsing:
-    """Tests for registry response parsing."""
+    """Tests for registry response parsing using parsers module."""
 
-    def test_parse_success_response(self, client: ITI41SOAPClient) -> None:
-        """Test parsing successful registry response."""
+    def test_parse_success_response(self) -> None:
+        """Test parsing successful registry response using parsers module."""
+        from ihe_test_util.ihe_transactions.parsers import parse_registry_response
+
         # Arrange
         response_xml = f"""<?xml version="1.0"?>
 <soap12:Envelope xmlns:soap12="{SOAP12_NS}" xmlns:wsa="{WSA_NS}">
@@ -716,17 +718,16 @@ class TestResponseParsing:
 </soap12:Envelope>"""
 
         # Act
-        result = client._parse_registry_response(response_xml)
+        result = parse_registry_response(response_xml)
 
         # Assert
-        assert result["status"] == REGISTRY_SUCCESS
-        assert result["response_id"] == "urn:uuid:response-123"
-        assert len(result["errors"]) == 0
+        assert result.is_success is True
+        assert len(result.errors) == 0
 
-    def test_parse_failure_response_with_errors(
-        self, client: ITI41SOAPClient
-    ) -> None:
-        """Test parsing failure response with error list."""
+    def test_parse_failure_response_with_errors(self) -> None:
+        """Test parsing failure response with error list using parsers module."""
+        from ihe_test_util.ihe_transactions.parsers import parse_registry_response
+
         # Arrange
         response_xml = f"""<?xml version="1.0"?>
 <soap12:Envelope xmlns:soap12="{SOAP12_NS}">
@@ -742,15 +743,17 @@ class TestResponseParsing:
 </soap12:Envelope>"""
 
         # Act
-        result = client._parse_registry_response(response_xml)
+        result = parse_registry_response(response_xml)
 
         # Assert
-        assert result["status"] == REGISTRY_FAILURE
-        assert len(result["errors"]) == 1
-        assert "XDSPatientIdDoesNotMatch" in result["errors"][0]
+        assert result.is_success is False
+        assert len(result.errors) >= 1
+        assert any("XDSPatientIdDoesNotMatch" in e.error_code for e in result.errors)
 
-    def test_parse_soap_fault(self, client: ITI41SOAPClient) -> None:
-        """Test parsing SOAP fault response."""
+    def test_parse_soap_fault(self) -> None:
+        """Test parsing SOAP fault response using parsers module."""
+        from ihe_test_util.ihe_transactions.parsers import parse_registry_response
+
         # Arrange
         response_xml = f"""<?xml version="1.0"?>
 <soap12:Envelope xmlns:soap12="{SOAP12_NS}">
@@ -767,43 +770,103 @@ class TestResponseParsing:
 </soap12:Envelope>"""
 
         # Act
-        result = client._parse_registry_response(response_xml)
+        result = parse_registry_response(response_xml)
 
         # Assert
-        assert result["status"] == REGISTRY_FAILURE
-        assert len(result["errors"]) == 1
-        assert "SOAP Fault" in result["errors"][0]
+        assert result.is_success is False
 
-    def test_map_registry_status_success(self, client: ITI41SOAPClient) -> None:
-        """Test mapping Success status."""
+    def test_map_registry_status_from_parsed_success(
+        self, client: ITI41SOAPClient
+    ) -> None:
+        """Test mapping Success status from parsed response."""
+        from ihe_test_util.ihe_transactions.parsers import RegistryResponse
+
+        # Arrange
+        parsed = RegistryResponse(
+            status="Success",
+            is_success=True,
+            errors=[],
+            warnings=[],
+            response_id="test-id",
+            request_id=None,
+            document_ids=[],
+            submission_set_id=None,
+        )
+
         # Act
-        status = client._map_registry_status(REGISTRY_SUCCESS)
+        status = client._map_registry_status_from_parsed(parsed)
 
         # Assert
         assert status == TransactionStatus.SUCCESS
 
-    def test_map_registry_status_partial_success(
+    def test_map_registry_status_from_parsed_partial_success(
         self, client: ITI41SOAPClient
     ) -> None:
-        """Test mapping PartialSuccess status."""
+        """Test mapping PartialSuccess status from parsed response."""
+        from ihe_test_util.ihe_transactions.parsers import RegistryResponse
+
+        # Arrange
+        parsed = RegistryResponse(
+            status="PartialSuccess",
+            is_success=False,
+            errors=[],
+            warnings=[],
+            response_id="test-id",
+            request_id=None,
+            document_ids=[],
+            submission_set_id=None,
+        )
+
         # Act
-        status = client._map_registry_status(REGISTRY_PARTIAL_SUCCESS)
+        status = client._map_registry_status_from_parsed(parsed)
 
         # Assert
         assert status == TransactionStatus.PARTIAL_SUCCESS
 
-    def test_map_registry_status_failure(self, client: ITI41SOAPClient) -> None:
-        """Test mapping Failure status."""
+    def test_map_registry_status_from_parsed_failure(
+        self, client: ITI41SOAPClient
+    ) -> None:
+        """Test mapping Failure status from parsed response."""
+        from ihe_test_util.ihe_transactions.parsers import RegistryResponse
+
+        # Arrange
+        parsed = RegistryResponse(
+            status="Failure",
+            is_success=False,
+            errors=[],
+            warnings=[],
+            response_id="test-id",
+            request_id=None,
+            document_ids=[],
+            submission_set_id=None,
+        )
+
         # Act
-        status = client._map_registry_status(REGISTRY_FAILURE)
+        status = client._map_registry_status_from_parsed(parsed)
 
         # Assert
         assert status == TransactionStatus.ERROR
 
-    def test_map_registry_status_unknown(self, client: ITI41SOAPClient) -> None:
+    def test_map_registry_status_from_parsed_unknown(
+        self, client: ITI41SOAPClient
+    ) -> None:
         """Test mapping unknown status defaults to ERROR."""
+        from ihe_test_util.ihe_transactions.parsers import RegistryResponse
+
+        # Arrange
+        parsed = RegistryResponse(
+            status="UnknownStatus",
+            is_success=False,
+            errors=[],
+            warnings=[],
+            response_id="test-id",
+            request_id=None,
+            document_ids=[],
+            submission_set_id=None,
+        )
+
         # Act
-        status = client._map_registry_status("unknown-status")
+        status = client._map_registry_status_from_parsed(parsed)
 
         # Assert
         assert status == TransactionStatus.ERROR

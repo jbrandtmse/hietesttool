@@ -19,7 +19,11 @@ def cert_bundle():
     """Load test certificate bundle with private key."""
     cert_path = Path("tests/fixtures/test_cert.pem")
     key_path = Path("tests/fixtures/test_key.pem")
-    return load_certificate(cert_path, key_path=key_path)
+    # Use use_cache=False to ensure fresh load with private key
+    bundle = load_certificate(cert_path, key_path=key_path, use_cache=False)
+    # Verify the private key is loaded
+    assert bundle.private_key is not None, "Private key must be loaded for signing tests"
+    return bundle
 
 
 @pytest.fixture
