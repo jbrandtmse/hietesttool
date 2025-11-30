@@ -1068,9 +1068,9 @@ class IntegratedWorkflow:
         
         Steps:
         1. Generate CCD from template
-        2. Execute PIX Add transaction
+        2. Execute PIX Add transaction (unless iti41_only_mode)
         3. If PIX Add succeeds, extract patient identifiers
-        4. Build ITI-41 transaction with patient IDs
+        4. Build ITI-41 transaction with patient IDs (unless pix_only_mode)
         5. Execute ITI-41 submission
         
         Args:
@@ -1083,6 +1083,8 @@ class IntegratedWorkflow:
             
         Note:
             If PIX Add fails, ITI-41 is skipped (AC: 6)
+            If pix_only_mode is True, ITI-41 is skipped (Story 6.7)
+            If iti41_only_mode is True, PIX Add is skipped and prior results are used (Story 6.7)
         """
         start_time = time.time()
         patient_id = patient.patient_id
@@ -1148,9 +1150,71 @@ class IntegratedWorkflow:
             
             return result
         
-        # Step 2: Execute PIX Add transaction
-        pix_add_start = time.time()
-        logger.debug(f"Executing PIX Add for patient {patient_id}")
+        # Story 6.7: Check for ITI-41 only mode - skip PIX Add and use prior results
+        if self._batch_config.iti41_only_mode and self._batch_config.pix_results_lookup:
+            pix_prior_result = self._batch_config.pix_results_lookup.get(patient_id)
+            
+            if pix_prior_result:
+                # Use PIX results from prior run
+                prior_status = pix_prior_result.get("pix_add_status", "unknown")
+                
+                if prior_status == "success":
+                    result.pix_add_status = "skipped"
+                    result.pix_add_message = "Using prior PIX Add results (ITI-41 only mode)"
+                    result.pix_enterprise_id = pix_prior_result.get("pix_enterprise_id")
+                    result.pix_enterprise_id_oid = pix_prior_result.get("pix_enterprise_id_oid")
+                    
+                    self._log_workflow_step(
+                        patient_id=patient_id,
+                        step="PIX_ADD",
+                        status="SKIPPED",
+                        duration_ms=0,
+                        details=f"Using prior result: {result.pix_enterprise_id}"
+                    )
+                    
+                    logger.info(
+                        f"Using prior PIX Add result for patient {patient_id} "
+                        f"(Enterprise ID: {result.pix_enterprise_id})"
+                    )
+                else:
+                    # Prior PIX Add failed - skip ITI-41 as well
+                    result.pix_add_status = "skipped"
+                    result.pix_add_message = f"Prior PIX Add failed: {pix_prior_result.get('pix_add_message', 'unknown')}"
+                    result.iti41_status = "skipped"
+                    result.iti41_message = "Skipped due to prior PIX Add failure"
+                    result.total_time_ms = int((time.time() - start_time) * 1000)
+                    
+                    self._log_workflow_step(
+                        patient_id=patient_id,
+                        step="PIX_ADD",
+                        status="SKIPPED",
+                        duration_ms=0,
+                        details=f"Prior PIX Add failed"
+                    )
+                    
+                    logger.warning(
+                        f"Skipping patient {patient_id} - prior PIX Add failed"
+                    )
+                    
+                    return result
+            else:
+                # No prior PIX result for this patient
+                result.pix_add_status = "skipped"
+                result.pix_add_message = "No prior PIX Add result found"
+                result.iti41_status = "skipped"
+                result.iti41_message = "Skipped - no prior PIX Add result"
+                result.total_time_ms = int((time.time() - start_time) * 1000)
+                result.error_message = f"Patient {patient_id} not found in PIX results file"
+                
+                logger.warning(
+                    f"Patient {patient_id} not found in prior PIX results - skipping"
+                )
+                
+                return result
+        else:
+            # Step 2: Execute PIX Add transaction (normal mode)
+            pix_add_start = time.time()
+            logger.debug(f"Executing PIX Add for patient {patient_id}")
         
         try:
             pix_result = self._pix_add_workflow.process_patient(
@@ -1224,6 +1288,24 @@ class IntegratedWorkflow:
             )
             
             raise
+        
+        # Story 6.7: Check for PIX-only mode - skip ITI-41
+        if self._batch_config.pix_only_mode:
+            result.iti41_status = "skipped"
+            result.iti41_message = "Skipped (PIX-only mode)"
+            result.total_time_ms = int((time.time() - start_time) * 1000)
+            
+            self._log_workflow_step(
+                patient_id=patient_id,
+                step="ITI41",
+                status="SKIPPED",
+                duration_ms=0,
+                details="PIX-only mode enabled"
+            )
+            
+            logger.info(f"ITI-41 skipped for patient {patient_id} (PIX-only mode)")
+            
+            return result
         
         # Step 3: Build and execute ITI-41 transaction
         iti41_start = time.time()

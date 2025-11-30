@@ -233,6 +233,8 @@ class BatchConfig(BaseModel):
     Configuration for batch processing workflows including checkpoint/resume,
     connection pooling, and fail-fast behavior.
     
+    Extended in Story 6.7 with workflow mode flags for PIX-only and ITI-41-only modes.
+    
     Attributes:
         batch_size: Maximum patients per batch (for partitioning large CSVs)
         checkpoint_interval: Save checkpoint every N patients
@@ -241,6 +243,9 @@ class BatchConfig(BaseModel):
         fail_fast: Stop processing on first error
         concurrent_connections: Maximum concurrent HTTP connections
         output_dir: Base output directory for batch results
+        pix_only_mode: Execute only PIX Add (skip ITI-41) - Story 6.7
+        iti41_only_mode: Execute only ITI-41 (skip PIX Add) - Story 6.7
+        pix_results_lookup: PIX results from prior run for ITI-41 only mode - Story 6.7
         
     Example:
         >>> batch_config = BatchConfig(
@@ -248,6 +253,15 @@ class BatchConfig(BaseModel):
         ...     checkpoint_interval=50,
         ...     fail_fast=False,
         ...     concurrent_connections=10
+        ... )
+        
+        # PIX-only mode
+        >>> batch_config = BatchConfig(pix_only_mode=True)
+        
+        # ITI-41 only mode with prior PIX results
+        >>> batch_config = BatchConfig(
+        ...     iti41_only_mode=True,
+        ...     pix_results_lookup={"PAT001": {"pix_enterprise_id": "123"}}
         ... )
     """
     
@@ -282,6 +296,20 @@ class BatchConfig(BaseModel):
     output_dir: Path = Field(
         default=Path("output"),
         description="Base output directory for batch results"
+    )
+    
+    # Story 6.7: Workflow mode flags
+    pix_only_mode: bool = Field(
+        default=False,
+        description="Execute only PIX Add registration (skip ITI-41)"
+    )
+    iti41_only_mode: bool = Field(
+        default=False,
+        description="Execute only ITI-41 submission (skip PIX Add)"
+    )
+    pix_results_lookup: Optional[dict] = Field(
+        default=None,
+        description="PIX results from prior run for ITI-41 only mode"
     )
     
     @model_validator(mode="after")
