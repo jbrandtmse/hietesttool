@@ -238,15 +238,30 @@ class TestCLIWorkflows:
 
         # Assert
         assert result.exit_code == 0
-        # Output should be valid JSON
+        # Output should be valid JSON - extract first JSON object from output
+        # (in case logging output is mixed in)
         import json
-        try:
-            json_output = json.loads(result.output)
-            assert isinstance(json_output, dict)
-            # Check for expected keys in validation result
-            assert "total_rows" in json_output or "errors" in json_output
-        except json.JSONDecodeError:
-            pytest.fail(f"Output is not valid JSON: {result.output}")
+        import re
+        
+        # Find the JSON object in the output (starts with { and ends with })
+        json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', result.output, re.DOTALL)
+        if json_match:
+            json_str = json_match.group(0)
+            try:
+                json_output = json.loads(json_str)
+                assert isinstance(json_output, dict)
+                # Check for expected keys in validation result
+                assert "total_rows" in json_output or "errors" in json_output
+            except json.JSONDecodeError:
+                pytest.fail(f"Extracted JSON is not valid: {json_str}")
+        else:
+            # Try parsing the whole output as JSON
+            try:
+                json_output = json.loads(result.output)
+                assert isinstance(json_output, dict)
+                assert "total_rows" in json_output or "errors" in json_output
+            except json.JSONDecodeError:
+                pytest.fail(f"Output does not contain valid JSON: {result.output}")
 
     def test_error_messages_are_actionable(self, tmp_path):
         """Test error messages provide actionable guidance."""

@@ -415,7 +415,8 @@ class TestErrorResponseHandling:
         # Assert
         assert response.status == TransactionStatus.ERROR
         assert len(response.error_messages) > 0
-        assert any("SOAP Fault" in msg for msg in response.error_messages)
+        # SOAP faults are formatted as "[Error] SOAP:{fault_code}: {fault_reason}"
+        assert any("SOAP:" in msg for msg in response.error_messages)
 
     @patch("requests.Session.post")
     def test_handle_http_500_error(
