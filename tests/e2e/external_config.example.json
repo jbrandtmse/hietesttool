@@ -1,0 +1,32 @@
+{
+  "_comment": "External Test Bed Configuration Example",
+  "_instructions": [
+    "Copy this file to external_config.json and update with your test bed URLs",
+    "NEVER commit external_config.json to version control",
+    "The external_config.json file should be added to .gitignore"
+  ],
+  
+  "pix_add_url": "https://ihe.wustl.edu/services/pix/v3/add",
+  "iti41_url": "https://ihe.wustl.edu/services/xds/submit",
+  
+  "sender_oid": "2.16.840.1.113883.3.72.5.9.1",
+  "receiver_oid": "2.16.840.1.113883.3.72.5.9.2",
+  
+  "verify_tls": true,
+  "timeout": 120,
+  "retry_count": 2,
+  
+  "_nist_info": {
+    "description": "NIST IHE Test Tools",
+    "pix_url_template": "https://ihe.wustl.edu/services/pix/v3/add",
+    "xds_url_template": "https://ihe.wustl.edu/services/xds/submit",
+    "documentation": "https://www.ihe.net/testing/",
+    "registration": "Register at https://gazelle.ihe.net/ for Gazelle test tools"
+  },
+  
+  "_usage": {
+    "run_external_tests": "pytest tests/e2e/ -m external",
+    "skip_external_tests": "pytest tests/e2e/ -m 'not external'",
+    "env_var_override": "E2E_EXTERNAL_CONFIG=/path/to/config.json pytest tests/e2e/ -m external"
+  }
+}
